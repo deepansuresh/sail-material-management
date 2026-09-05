@@ -218,6 +218,7 @@ function renderProposal(data) {
     document.getElementById('valPRNo').innerText = ind.purchase_requisition_no || '-';
     document.getElementById('valIndentRefNo').innerText = ind.indent_reference_no || '-';
     document.getElementById('valIndentDate').innerText = ind.indent_date || '-';
+    document.getElementById('valProposalDate').innerText = ind.proposal_date || '-';
     document.getElementById('valIndentRaisedBy').innerText = ind.indent_raised_by || '-';
     document.getElementById('valEstimate').innerText = ind.estimate || '-';
     document.getElementById('valBasisEstimate').innerText = ind.basis_of_estimate || '-';
