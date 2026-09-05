@@ -157,13 +157,13 @@ def parse_purchase_requisition(text: str, filename: str = "") -> dict:
     # 2. PURCHASE REQUISITION NO & INDENT REFERENCE
     # -------------------------------------------------------------
     indent_ref = ""
-    m_ind_lbl = re.search(r'(?:Indent\s*Reference\s*(?:number|no\.?)|Indentor[\'’]?s?\s*Reference\s*No\.?)[:\s]*([A-Za-z0-9\/\-_]+)', text, re.IGNORECASE)
-    if m_ind_lbl:
+    m_ind_lbl = re.search(r'(?:Indent\s*Ref\.?\s*(?:No\.?|number)|Indent\s*Reference\s*(?:number|no\.?)|Indentor[\'’]?s?\s*Reference\s*No\.?)[:\s]*([A-Za-z0-9\/\-_]+)', text, re.IGNORECASE)
+    if m_ind_lbl and m_ind_lbl.group(1).lower() not in ['to', 'the', 'is', 'of', 'and', 'for', 'in', 'at', 'no', 'ref', 'date', 'ci', 'number'] and len(m_ind_lbl.group(1)) >= 3:
         indent_ref = clean_str(m_ind_lbl.group(1))
     else:
         # Match SAIL indent reference format: SMSE/27/04, SMS/25/002, 64/26/409
         m_ind = re.search(r'\b(SMS[A-Z0-9\/\-_]{2,10}|[A-Za-z0-9]{2,8}\/\d{2}\/[A-Za-z0-9]{2,5})\b', text)
-        if m_ind:
+        if m_ind and m_ind.group(1).lower() not in ['to', 'the', 'for']:
             indent_ref = m_ind.group(1)
 
     proposal_ref = ""
