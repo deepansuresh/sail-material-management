@@ -18,16 +18,20 @@ elif shutil.which("tesseract"):
     pytesseract.pytesseract.tesseract_cmd = shutil.which("tesseract")
 
 
-def extract_text_from_pdf(pdf_path: str, max_pages: int = 10) -> str:
+import time
+
+def extract_text_from_pdf(pdf_path: str, max_pages: int = 10, total_timeout_sec: int = 75) -> str:
     """
     Extracts text page by page. Prefers digital text; falls back to fast OCR when empty or short.
-    Uses bounded pages (max 10) at dpi=110 with OMP_THREAD_LIMIT=1 and timeout=15 to ensure reliable cloud execution.
-    Runs bounded 2-worker concurrency across container vCPUs to reliably complete within gateway timeouts.
+    Uses bounded pages (max 10) at dpi=110, colorspace=csGRAY (8-bit grayscale), --oem 1.
+    Processes pages sequentially (single-worker) to avoid Linux cgroup CFS CPU throttling 
+    and memory exhaustion on 0.1 vCPU / 512MB RAM cloud containers.
+    Includes strict per-page timeout (12s) and global time budget (75s) to guarantee completion 
+    within Render Free Tier gateway limits.
     """
-    from concurrent.futures import ThreadPoolExecutor
+    start_time = time.time()
     doc = fitz.open(pdf_path)
     total_pages = min(len(doc), max_pages)
-    doc.close()
     
     has_tesseract = False
     try:
@@ -38,41 +42,53 @@ def extract_text_from_pdf(pdf_path: str, max_pages: int = 10) -> str:
 
     print(f"[EXTRACTOR] Processing {total_pages} pages from {os.path.basename(pdf_path)}...", flush=True)
 
-    def _ocr_single_page(p_num: int):
+    extracted_pages = []
+    for p_num in range(total_pages):
+        elapsed = time.time() - start_time
+        if elapsed > total_timeout_sec:
+            print(f"[EXTRACTOR] Global time limit reached ({elapsed:.1f}s > {total_timeout_sec}s). Stopping further pages.", flush=True)
+            break
+        
         try:
-            d = fitz.open(pdf_path)
-            page = d[p_num]
-            text = page.get_text()
-            if len(text.strip()) > 60:
-                d.close()
-                print(f"[EXTRACTOR] Page {p_num + 1}/{total_pages}: Digital text found ({len(text)} chars)", flush=True)
-                return p_num, f"--- PAGE {p_num + 1} ---\n" + text
-            
+            page = doc[p_num]
+            digital_text = page.get_text()
+            if len(digital_text.strip()) > 40:
+                print(f"[EXTRACTOR] Page {p_num + 1}/{total_pages}: Digital text found ({len(digital_text)} chars)", flush=True)
+                extracted_pages.append(f"--- PAGE {p_num + 1} ---\n" + digital_text)
+                continue
+
             if has_tesseract:
-                print(f"[EXTRACTOR] Page {p_num + 1}/{total_pages}: Running OCR...", flush=True)
-                pix = page.get_pixmap(dpi=110)
-                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                print(f"[EXTRACTOR] Page {p_num + 1}/{total_pages}: Running fast grayscale OCR...", flush=True)
+                # Render grayscale pixmap at 110 DPI - 1/3 memory and faster than RGB
+                pix = page.get_pixmap(dpi=110, colorspace=fitz.csGRAY)
+                img = Image.frombytes("L", [pix.width, pix.height], pix.samples)
                 del pix
-                d.close()
-                ocr_text = pytesseract.image_to_string(img, timeout=15)
+                
+                # Fast LSTM engine (--oem 1) with per-page timeout
+                ocr_text = pytesseract.image_to_string(img, config="--oem 1", timeout=12)
                 del img
-                import gc
-                gc.collect()
+                
                 print(f"[EXTRACTOR] Page {p_num + 1}/{total_pages}: OCR complete ({len(ocr_text)} chars)", flush=True)
-                return p_num, f"--- PAGE {p_num + 1} (OCR) ---\n" + ocr_text
+                extracted_pages.append(f"--- PAGE {p_num + 1} (OCR) ---\n" + ocr_text)
             else:
-                d.close()
                 print(f"[EXTRACTOR] Page {p_num + 1}/{total_pages}: No digital text and no OCR available", flush=True)
-                return p_num, f"--- PAGE {p_num + 1} ---\n" + text
+                extracted_pages.append(f"--- PAGE {p_num + 1} ---\n" + digital_text)
+        except (pytesseract.TesseractTimeoutError, TimeoutError):
+            print(f"[EXTRACTOR] Page {p_num + 1}/{total_pages}: OCR page timed out (12s limit reached), skipping page.", flush=True)
+            extracted_pages.append(f"--- PAGE {p_num + 1} (OCR Timeout) ---\n")
         except Exception as e:
             print(f"[EXTRACTOR] Page {p_num + 1}/{total_pages}: Error ({e})", flush=True)
-            return p_num, f"--- PAGE {p_num + 1} (Error: {e}) ---\n"
+            extracted_pages.append(f"--- PAGE {p_num + 1} (Error: {e}) ---\n")
+        finally:
+            import gc
+            gc.collect()
 
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        results = list(executor.map(_ocr_single_page, range(total_pages)))
-
-    results.sort(key=lambda x: x[0])
-    return "\n\n".join([r[1] for r in results])
+    doc.close()
+    
+    combined_text = "\n\n".join(extracted_pages)
+    if not combined_text.strip():
+        raise RuntimeError("No readable text could be extracted from the document within the time limit.")
+    return combined_text
 
 
 def clean_str(s: str) -> str:
@@ -206,7 +222,7 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
 
     # 1. Indent Reference Number (strictly separate dynamic field)
     indent_reference_no = NOT_FOUND
-    all_refs = re.findall(r'(?:Indent\s*Ref(?:erence)?\s*(?:no|number|\.)?|vide\s*Ref)[:\s]*([A-Za-z0-9\/\-_]+)', text, re.I)
+    all_refs = re.findall(r'(?:Indent\s*Ref(?:erence)?(?:[\.\s]*No\.?|[\.\s]*Number)?|vide\s*Ref)[:\s]*([A-Za-z0-9\/\-_]+)', text, re.I)
     for cand in all_refs:
         c = clean_str(cand)
         if '/' in c and re.search(r'\d', c) and len(c) >= 4:
@@ -417,7 +433,7 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
             m_ed = re.search(r'([A-Z\.\s]{3,30}),?\s*(?:EXECUTIVE\s*DIRECTOR|EXECLTIVE\s*DIRECTOR|ED)', text, re.I)
             if m_ed:
                 cand_name = clean_str(m_ed.group(1))
-                if cand_name and len(cand_name) > 3 and not any(k in cand_name.lower() for k in ['the', 'approved', 'authority', 'screening', 'committee', 'shredd', 'scrap', 'plant']):
+                if cand_name and len(cand_name) > 3 and not any(k in cand_name.lower() for k in ['the', 'approved', 'authority', 'screening', 'committee', 'shredd', 'scrap', 'plant', 'quantity', 'suppli', 'tolerance', 'deliver', 'order', 'tender', 'indent', 'date', 'ref', 'rance']):
                     approving_authority = f'{cand_name}, Executive Director'
                 else:
                     approving_authority = 'Executive Director'
