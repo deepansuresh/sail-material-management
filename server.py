@@ -57,7 +57,7 @@ async def serve_index():
         return HTMLResponse(content=f.read())
 
 
-BUILD_VERSION = "2026.09.05.v7-fast"
+BUILD_VERSION = "2026.09.05.v8-fix-timeout"
 
 @app.get("/api/health")
 def health_check():
