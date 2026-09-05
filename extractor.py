@@ -4,15 +4,9 @@ import fitz
 from PIL import Image
 import pytesseract
 
-import shutil
-
 TESSERACT_EXE = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 if os.path.exists(TESSERACT_EXE):
     pytesseract.pytesseract.tesseract_cmd = TESSERACT_EXE
-elif shutil.which("tesseract"):
-    pytesseract.pytesseract.tesseract_cmd = shutil.which("tesseract")
-elif os.path.exists("/usr/bin/tesseract"):
-    pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
 
 
 def extract_text_from_pdf(pdf_path: str, max_pages: int = 25) -> str:
@@ -157,13 +151,13 @@ def parse_purchase_requisition(text: str, filename: str = "") -> dict:
     # 2. PURCHASE REQUISITION NO & INDENT REFERENCE
     # -------------------------------------------------------------
     indent_ref = ""
-    m_ind_lbl = re.search(r'(?:Indent\s*Ref\.?\s*(?:No\.?|number)|Indent\s*Reference\s*(?:number|no\.?)|Indentor[\'’]?s?\s*Reference\s*No\.?)[:\s]*([A-Za-z0-9\/\-_]+)', text, re.IGNORECASE)
-    if m_ind_lbl and m_ind_lbl.group(1).lower() not in ['to', 'the', 'is', 'of', 'and', 'for', 'in', 'at', 'no', 'ref', 'date', 'ci', 'number'] and len(m_ind_lbl.group(1)) >= 3:
+    m_ind_lbl = re.search(r'(?:Indent\s*Reference\s*(?:number|no\.?)|Indentor[\'’]?s?\s*Reference\s*No\.?)[:\s]*([A-Za-z0-9\/\-_]+)', text, re.IGNORECASE)
+    if m_ind_lbl:
         indent_ref = clean_str(m_ind_lbl.group(1))
     else:
         # Match SAIL indent reference format: SMSE/27/04, SMS/25/002, 64/26/409
         m_ind = re.search(r'\b(SMS[A-Z0-9\/\-_]{2,10}|[A-Za-z0-9]{2,8}\/\d{2}\/[A-Za-z0-9]{2,5})\b', text)
-        if m_ind and m_ind.group(1).lower() not in ['to', 'the', 'for']:
+        if m_ind:
             indent_ref = m_ind.group(1)
 
     proposal_ref = ""
@@ -173,10 +167,10 @@ def parse_purchase_requisition(text: str, filename: str = "") -> dict:
 
     pr_no = ""
     m_pr_lbl = re.search(r'(?:INDENT\s*Number|Purchase\s*Requisition\s*No\.?|Purchase\s*Dept\s*Reference\s*Number)[:\s]*([A-Za-z0-9\/\-_]+)', text, re.IGNORECASE)
-    if m_pr_lbl and m_pr_lbl.group(1).lower() not in ['date', 'ci', 'number', 'salem', 'steel', 'plant', 'purchase', 'ref']:
+    if m_pr_lbl and m_pr_lbl.group(1).lower() not in ['date', 'ci', 'number']:
         pr_no = clean_str(m_pr_lbl.group(1))
     else:
-        m_pr_fmt = re.search(r'\b(A61\d{4}|[A-Z]\d{6}|\b\d{8}\b)\b', text)
+        m_pr_fmt = re.search(r'\b(A61\d{4}|[A-Z]\d{6})\b', text)
         if m_pr_fmt and m_pr_fmt.group(1) != indent_ref:
             pr_no = m_pr_fmt.group(1)
 
