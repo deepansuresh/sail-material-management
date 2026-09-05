@@ -57,7 +57,7 @@ async def serve_index():
         return HTMLResponse(content=f.read())
 
 
-BUILD_VERSION = "2026.09.05.v6-strict"
+BUILD_VERSION = "2026.09.05.v7-fast"
 
 @app.get("/api/health")
 def health_check():
@@ -104,14 +104,17 @@ def analyze_pdf(file: UploadFile = File(...)):
         file_size_mb = os.path.getsize(tmp_path) / (1024 * 1024)
         print(f"[API] Saved upload to {tmp_path} ({file_size_mb:.2f} MB). Starting extraction...", flush=True)
 
-        # Extract freshly from the newly uploaded PDF
-        extracted_text = extractor.extract_text_from_pdf(tmp_path, max_pages=10)
+        # Extract freshly from the newly uploaded PDF with 75s budget
+        extracted_text = extractor.extract_text_from_pdf(tmp_path, max_pages=10, total_timeout_sec=75)
         print(f"[API] Extraction completed ({len(extracted_text)} chars). Parsing proposal data...", flush=True)
         
         # Parse into fixed structured proposal template
         proposal_data = extractor.parse_purchase_requisition(extracted_text, filename=file.filename)
         print(f"[API] Success! Returning purchase proposal for: {file.filename}", flush=True)
         return proposal_data
+    except (TimeoutError, RuntimeError) as te:
+        print(f"[ERROR] /api/analyze timed out or failed for {file.filename}: {te}", flush=True)
+        raise HTTPException(status_code=408, detail=f"Analysis timed out: {str(te)}")
     except Exception as e:
         print(f"[ERROR] /api/analyze failed for {file.filename}: {e}", flush=True)
         traceback.print_exc()
