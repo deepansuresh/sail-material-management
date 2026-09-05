@@ -22,9 +22,12 @@ def extract_text_from_pdf(pdf_path: str, max_pages: int = 10) -> str:
     """
     Extracts text page by page. Prefers digital text; falls back to fast OCR when empty or short.
     Uses bounded pages (max 10) at dpi=110 with OMP_THREAD_LIMIT=1 and timeout=15 to ensure reliable cloud execution.
+    Runs bounded 2-worker concurrency across container vCPUs to reliably complete within gateway timeouts.
     """
+    from concurrent.futures import ThreadPoolExecutor
     doc = fitz.open(pdf_path)
-    full_text_list = []
+    total_pages = min(len(doc), max_pages)
+    doc.close()
     
     has_tesseract = False
     try:
@@ -33,37 +36,43 @@ def extract_text_from_pdf(pdf_path: str, max_pages: int = 10) -> str:
     except:
         has_tesseract = False
 
-    total_pages = min(len(doc), max_pages)
     print(f"[EXTRACTOR] Processing {total_pages} pages from {os.path.basename(pdf_path)}...", flush=True)
 
-    for page_num in range(total_pages):
-        page = doc[page_num]
-        text = page.get_text()
-        
-        if len(text.strip()) > 60:
-            print(f"[EXTRACTOR] Page {page_num + 1}/{total_pages}: Digital text found ({len(text)} chars)", flush=True)
-            full_text_list.append(f"--- PAGE {page_num + 1} ---\n" + text)
-        elif has_tesseract:
-            print(f"[EXTRACTOR] Page {page_num + 1}/{total_pages}: Running OCR...", flush=True)
-            try:
+    def _ocr_single_page(p_num: int):
+        try:
+            d = fitz.open(pdf_path)
+            page = d[p_num]
+            text = page.get_text()
+            if len(text.strip()) > 60:
+                d.close()
+                print(f"[EXTRACTOR] Page {p_num + 1}/{total_pages}: Digital text found ({len(text)} chars)", flush=True)
+                return p_num, f"--- PAGE {p_num + 1} ---\n" + text
+            
+            if has_tesseract:
+                print(f"[EXTRACTOR] Page {p_num + 1}/{total_pages}: Running OCR...", flush=True)
                 pix = page.get_pixmap(dpi=110)
                 img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
                 del pix
+                d.close()
                 ocr_text = pytesseract.image_to_string(img, timeout=15)
                 del img
                 import gc
                 gc.collect()
-                print(f"[EXTRACTOR] Page {page_num + 1}/{total_pages}: OCR complete ({len(ocr_text)} chars)", flush=True)
-                full_text_list.append(f"--- PAGE {page_num + 1} (OCR) ---\n" + ocr_text)
-            except Exception as e:
-                print(f"[EXTRACTOR] Page {page_num + 1}/{total_pages}: OCR error ({e})", flush=True)
-                full_text_list.append(f"--- PAGE {page_num + 1} (Error: {e}) ---\n")
-        else:
-            print(f"[EXTRACTOR] Page {page_num + 1}/{total_pages}: No digital text and no OCR available", flush=True)
-            full_text_list.append(f"--- PAGE {page_num + 1} ---\n" + text)
-                
-    doc.close()
-    return "\n\n".join(full_text_list)
+                print(f"[EXTRACTOR] Page {p_num + 1}/{total_pages}: OCR complete ({len(ocr_text)} chars)", flush=True)
+                return p_num, f"--- PAGE {p_num + 1} (OCR) ---\n" + ocr_text
+            else:
+                d.close()
+                print(f"[EXTRACTOR] Page {p_num + 1}/{total_pages}: No digital text and no OCR available", flush=True)
+                return p_num, f"--- PAGE {p_num + 1} ---\n" + text
+        except Exception as e:
+            print(f"[EXTRACTOR] Page {p_num + 1}/{total_pages}: Error ({e})", flush=True)
+            return p_num, f"--- PAGE {p_num + 1} (Error: {e}) ---\n"
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(_ocr_single_page, range(total_pages)))
+
+    results.sort(key=lambda x: x[0])
+    return "\n\n".join([r[1] for r in results])
 
 
 def clean_str(s: str) -> str:
