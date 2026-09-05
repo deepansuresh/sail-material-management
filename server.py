@@ -1,4 +1,11 @@
 import os
+# Constrain OpenMP and math libraries to 1 thread to avoid thread thrashing on fractional vCPUs
+os.environ["OMP_THREAD_LIMIT"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["PYTHONUNBUFFERED"] = "1"
+
 import shutil
 import tempfile
 from fastapi import FastAPI, UploadFile, File, HTTPException, Response
@@ -57,7 +64,7 @@ def health_check():
     tess_ver = None
     if tess:
         try:
-            r = subprocess.run([tess, "--version"], capture_output=True, text=True, timeout=3)
+            r = subprocess.run([tess, "--version"], capture_output=True, text=True, timeout=10)
             tess_ver = r.stdout.splitlines()[0] if r.stdout else r.stderr.splitlines()[0]
         except Exception as e:
             tess_ver = str(e)
@@ -68,7 +75,8 @@ def health_check():
         "platform": platform.platform(),
         "python_version": platform.python_version(),
         "tesseract_path": tess,
-        "tesseract_version": tess_ver
+        "tesseract_version": tess_ver,
+        "omp_thread_limit": os.environ.get("OMP_THREAD_LIMIT")
     }
 
 
@@ -78,6 +86,7 @@ def analyze_pdf(file: UploadFile = File(...)):
     Reads newly uploaded PDF from scratch.
     Synchronous def runs in FastAPI threadpool to prevent blocking the asyncio event loop.
     """
+    print(f"[API] >>> Received upload request for file: {file.filename}", flush=True)
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
 
@@ -89,13 +98,19 @@ def analyze_pdf(file: UploadFile = File(...)):
             tmp_path = tmp.name
             shutil.copyfileobj(file.file, tmp)
 
+        file_size_mb = os.path.getsize(tmp_path) / (1024 * 1024)
+        print(f"[API] Saved upload to {tmp_path} ({file_size_mb:.2f} MB). Starting extraction...", flush=True)
+
         # Extract freshly from the newly uploaded PDF
         extracted_text = extractor.extract_text_from_pdf(tmp_path, max_pages=10)
+        print(f"[API] Extraction completed ({len(extracted_text)} chars). Parsing proposal data...", flush=True)
         
         # Parse into fixed structured proposal template
         proposal_data = extractor.parse_purchase_requisition(extracted_text, filename=file.filename)
+        print(f"[API] Success! Returning purchase proposal for: {file.filename}", flush=True)
         return proposal_data
     except Exception as e:
+        print(f"[ERROR] /api/analyze failed for {file.filename}: {e}", flush=True)
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
     finally:
