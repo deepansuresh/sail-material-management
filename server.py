@@ -57,6 +57,8 @@ async def serve_index():
         return HTMLResponse(content=f.read())
 
 
+BUILD_VERSION = "2026.09.05.v3"
+
 @app.get("/api/health")
 def health_check():
     import platform, subprocess, shutil
@@ -71,6 +73,7 @@ def health_check():
             
     return {
         "status": "ok",
+        "version": BUILD_VERSION,
         "is_docker": os.path.exists("/.dockerenv"),
         "platform": platform.platform(),
         "python_version": platform.python_version(),
