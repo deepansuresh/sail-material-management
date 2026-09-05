@@ -1,4 +1,4 @@
-﻿import docx
+import docx
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
@@ -102,6 +102,7 @@ def generate_purchase_proposal_docx(data: dict, output_path: str):
     add_section_header(table, "Indent Particulars")
     ind = data.get("indent_particulars", {})
     add_key_value(table, "Purchase requisition no.", ind.get("purchase_requisition_no", ""))
+    add_key_value(table, "Indent reference no.", ind.get("indent_reference_no", ""))
     add_key_value(table, "Indent date", ind.get("indent_date", ""))
     add_key_value(table, "Indent raised by", ind.get("indent_raised_by", ""))
     add_key_value(table, "Estimate", ind.get("estimate", ""))
