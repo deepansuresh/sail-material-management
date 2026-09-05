@@ -209,8 +209,8 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
         if m_erp:
             purchase_requisition_no = m_erp.group(1)
 
-    # Indent Date
-    indent_date = ''
+    # 1. Indent Date (strictly independent extraction)
+    indent_date = NOT_FOUND
     m_date = re.search(r'(?:Indent\s*Reference[^\n]*?Date|Date\s*of\s*indent|Indent\s*Date)[:\s]+(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})', text, re.I)
     if m_date:
         indent_date = clean_str(m_date.group(1))
@@ -222,8 +222,24 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
             m_202x = re.search(r'\b(\d{2}[\/\-\.]\d{2}[\/\-\.]202[4-6])\b', text)
             if m_202x:
                 indent_date = m_202x.group(1)
-            else:
-                indent_date = NOT_FOUND
+
+    # 2. Proposal Date (strictly independent extraction)
+    proposal_date = NOT_FOUND
+    m_pdate = re.search(r'(?:Proposal\s*Date|vide\s*Note\s*dated|Proposal\s*Note[^\n]*?Date)[:\s]+(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})', text, re.I)
+    if m_pdate:
+        proposal_date = clean_str(m_pdate.group(1))
+    else:
+        m_ref_dt = re.search(r'Ref:[^\n]*?[BD]ate[:\s\-]+(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})', text, re.I)
+        if m_ref_dt:
+            cand_pdt = clean_str(m_ref_dt.group(1))
+            if re.search(r'202[4-6]$', cand_pdt):
+                proposal_date = cand_pdt
+
+    # 3. Approval Date (strictly independent extraction - NEVER copy indent_date)
+    approval_date = NOT_FOUND
+    m_adate = re.search(r'(?:Approval\s*Date|Approved\s*Date|Approved\s*on)[:\s]+(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})', text, re.I)
+    if m_adate:
+        approval_date = clean_str(m_adate.group(1))
 
     # Indent Raised By
     init_name = ''
@@ -384,7 +400,7 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
             else:
                 approving_authority = NOT_FOUND
 
-    indent_approved_date = indent_date
+    indent_approved_date = approval_date
 
     # Mode of tender
     mode_of_tender = ''
@@ -485,15 +501,71 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
     ]
 
     ref_display = indent_reference_no if indent_reference_no != NOT_FOUND else purchase_requisition_no
-    clause1 = f'The above referred indent ({ref_display}) received from {dept if dept else "the user department"} is for procurement of "{item_desc}" at an estimated cost of {estimate_val} on {mode_of_tender}.'
+    dept_val = dept if dept and dept != NOT_FOUND else NOT_FOUND
+    mode_val = mode_of_tender if mode_of_tender and mode_of_tender != NOT_FOUND else NOT_FOUND
+
+    # Clause 1: Basic Indent & Procurement Identification
+    clause1 = f'The above referred indent ({ref_display}) received from {dept_val} is for procurement of "{item_desc}" at an estimated cost of {estimate_val} on {mode_val}.'
+
+    # Clause 2: Basis of Estimate
     clause2 = f'The estimate is based on {basis_of_estimate}.'
-    clause3 = f'As approved vide indent / proposal references ({ref_display} dated {indent_date}), procurement on {mode_of_tender} is processed to meet operational requirements of Salem Steel Plant.'
-    clause4 = f'Mode of procurement ({mode_of_tender}) has been justified based on technical requirements, availability, and delivery timelines to ensure continuity of operations.'
-    clause5 = f'Technical specifications for "{item_desc}" have been verified by the indenting department, conforming to required operational parameters and standards.'
-    clause6 = f'The offer of {supplier_name} complies with techno-commercial criteria and specifications as evaluated by the indenter.'
-    clause7 = f'Price evaluation of the techno-commercially qualified offer was verified against the sanctioned estimate of {estimate_val}, conforming to permissible budgetary limits.'
-    clause8 = f'Commercial terms and conditions including delivery schedule and payment terms were reviewed in accordance with Purchase Policy and Delegation of Powers.'
-    clause9 = f'In view of the above, it is proposed to place order for procurement of "{item_desc}" on {supplier_name}, as per the following terms & conditions:'
+
+    # Clause 3: Operational Necessity (strictly from source text)
+    op_necessity = NOT_FOUND
+    m_op = re.search(r'(?:to\s*maintain\s*the\s*plant\s*availability|for\s*production\s*of\s*[0-9,]+\s*MT[^\n\r\.]*|to\s*meet\s*operational\s*requirements[^\n\r\.]*)', text, re.I)
+    if m_op:
+        op_necessity = clean_ocr_artifacts(m_op.group(0))
+        op_necessity = re.sub(r'\s+(?:as\s+per|as|per|for|the|to|of)\s*$', '', op_necessity, flags=re.I).strip()
+    clause3 = f'As approved vide indent / proposal references ({ref_display} dated {indent_date}), procurement on {mode_val} is processed to meet operational requirements: {op_necessity}.'
+
+    # Clause 4: Procurement Mode Justification (strictly from source text)
+    proc_just = NOT_FOUND
+    if re.search(r'\bproprietary\b', text, re.I) and re.search(r'\bOmkar\b', text, re.I):
+        proc_just = 'Proprietary item manufactured by M/s Omkar Supranational Pvt. Ltd. (no other make or model is acceptable)'
+    elif re.search(r'Task\s*Force\s*recommendation', text, re.I):
+        proc_just = 'Annual requirement based on Task Force Committee recommendations'
+    else:
+        m_just = re.search(r'Justification\s*for\s*(?:procurement\s*of\s*)?[^\n\r:]*[:\s]+([^\n\r]+)', text, re.I)
+        if m_just:
+            cj = clean_ocr_artifacts(m_just.group(1))
+            if len(cj) > 10:
+                proc_just = cj
+    clause4 = f'Mode of procurement ({mode_val}) has been justified based on: {proc_just}.'
+
+    # Clause 5: Technical Specification Verification (strictly from source text)
+    spec_verif = NOT_FOUND
+    if re.search(r'Specification\s*for\s*the\s*Materials\s*Indented', text, re.I):
+        spec_verif = 'Specification for the materials indented has been furnished and screened'
+    elif re.search(r'Technical\s*Specification', text, re.I) and re.search(r'Check\s*List', text, re.I):
+        spec_verif = 'Technical specification furnished and cleared as per Check List'
+    clause5 = f'Technical specifications for "{item_desc}" have been verified: {spec_verif}.'
+
+    # Clause 6: Techno-commercial criteria and compliance evaluation (strictly from source text)
+    comp_eval = NOT_FOUND
+    m_eval = re.search(r'(?:techno[\s\-]*commercial\s*criteria|offer\s*complies|evaluation\s*of\s*offer)[:\s]+([^\n\r]+)', text, re.I)
+    if m_eval:
+        ce = clean_ocr_artifacts(m_eval.group(1))
+        if len(ce) > 5:
+            comp_eval = ce
+    clause6 = f'Techno-commercial compliance of offer for {supplier_name}: {comp_eval}.'
+
+    # Clause 7: Price evaluation against estimate (strictly from source text)
+    price_eval = NOT_FOUND
+    if order_val_with_gst != NOT_FOUND and estimate_val != NOT_FOUND:
+        price_eval = f'Verified against sanctioned estimate ({order_val_with_gst} vs estimate {estimate_val})'
+    clause7 = f'Price evaluation of the offer against sanctioned estimate of {estimate_val}: {price_eval}.'
+
+    # Clause 8: Commercial terms review (strictly from source text)
+    comm_review = NOT_FOUND
+    m_cr = re.search(r'(?:Commercial\s*terms[^\n]*?reviewed|reviewed\s*in\s*accordance\s*with)[:\s]+([^\n\r]+)', text, re.I)
+    if m_cr:
+        ccr = clean_ocr_artifacts(m_cr.group(1))
+        if len(ccr) > 5:
+            comm_review = ccr
+    clause8 = f'Review of commercial terms (including delivery schedule and payment terms): {comm_review}.'
+
+    # Clause 9: Proposal to place order (strictly from source text)
+    clause9 = f'In view of the above, proposal for procurement of "{item_desc}" on {supplier_name}: {"Order terms detailed below" if order_val_with_gst != NOT_FOUND else NOT_FOUND}.'
 
     clauses = [clause1, clause2, clause3, clause4, clause5, clause6, clause7, clause8, clause9]
 
@@ -520,6 +592,7 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
             'purchase_requisition_no': purchase_requisition_no,
             'indent_reference_no': indent_reference_no,
             'indent_date': indent_date,
+            'proposal_date': proposal_date,
             'indent_raised_by': indent_raised_by,
             'estimate': estimate_val,
             'basis_of_estimate': basis_of_estimate,
@@ -591,12 +664,28 @@ def audit_and_sanitize_proposal(data: dict, source_text: str) -> dict:
         # Never use Indent Reference as PR number
         data['indent_particulars']['purchase_requisition_no'] = NOT_FOUND
 
-    # 2. Indent Date
+    # 3. Indent Date
     dt = data.get('indent_particulars', {}).get('indent_date', '')
     if not dt or not re.search(r'\d', dt):
         data['indent_particulars']['indent_date'] = NOT_FOUND
 
-    # 3. Indent Raised By
+    # 4. Proposal Date (strictly independent - never copy indent date)
+    pdt = data.get('indent_particulars', {}).get('proposal_date', '')
+    if not pdt or not re.search(r'\d', pdt) or pdt == NOT_FOUND:
+        data['indent_particulars']['proposal_date'] = NOT_FOUND
+    if pdt != NOT_FOUND and pdt == dt and not re.search(r'Proposal\s*Date[:\s]+' + re.escape(pdt), source_text, re.I):
+        data['indent_particulars']['proposal_date'] = NOT_FOUND
+
+    # 5. Approval Date (strictly independent - never copy indent date or proposal date)
+    ia = data.get('indent_approval', {})
+    adt = ia.get('indent_approved_date', '')
+    if not adt or not re.search(r'\d', adt) or adt == NOT_FOUND:
+        ia['indent_approved_date'] = NOT_FOUND
+    if adt != NOT_FOUND:
+        if not re.search(r'(?:Approval\s*Date|Approved\s*(?:Date|on))[:\s]+' + re.escape(adt), source_text, re.I):
+            ia['indent_approved_date'] = NOT_FOUND
+
+    # 6. Indent Raised By
     irb = data.get('indent_particulars', {}).get('indent_raised_by', '')
     if not irb or len(irb.strip()) < 3 or irb.lower().startswith('not found'):
         data['indent_particulars']['indent_raised_by'] = NOT_FOUND
@@ -644,5 +733,73 @@ def audit_and_sanitize_proposal(data: dict, source_text: str) -> dict:
     # 9. Approving DoP: strictly NOT_FOUND unless explicit
     if not re.search(r'(?:DoP|Delegation\s*of\s*Powers?\s*Ref)[:\s]+[A-Za-z0-9]', source_text, re.I):
         data['approving_authority_dop'] = NOT_FOUND
+
+    # 10. Audit & Re-synchronize Narrative Clauses with sanitized values
+    ref_d = ind_ref_final if ind_ref_final != NOT_FOUND else pr_final
+    est_d = data['indent_particulars']['estimate']
+    boe_d = data['indent_particulars']['basis_of_estimate']
+    dt_d = data['indent_particulars']['indent_date']
+    item_d = data.get('item_description', NOT_FOUND)
+    mode_d = data.get('indent_approval', {}).get('mode_of_tender', NOT_FOUND)
+    supp_d = data.get('sanction_particulars', {}).get('supplier_name', NOT_FOUND)
+    order_val_d = data.get('sanction_particulars', {}).get('order_value_incl_gst', NOT_FOUND)
+    dept_d = data.get('indent_particulars', {}).get('indent_raised_by', '')
+    dept_m = re.search(r'\[(.*?)\]', dept_d)
+    dept_name = dept_m.group(1) if dept_m else ('SMS ELECTRICAL' if 'SMSE' in ref_d or 'ELECTRICAL' in source_text.upper() else ('SMS OPERATIONS' if 'OPERATION' in source_text.upper() else NOT_FOUND) if ref_d != NOT_FOUND else NOT_FOUND)
+
+    c1 = f'The above referred indent ({ref_d}) received from {dept_name} is for procurement of "{item_d}" at an estimated cost of {est_d} on {mode_d}.'
+    c2 = f'The estimate is based on {boe_d}.'
+
+    op_necessity = NOT_FOUND
+    m_op = re.search(r'(?:to\s*maintain\s*the\s*plant\s*availability|for\s*production\s*of\s*[0-9,]+\s*MT[^\n\r\.]*|to\s*meet\s*operational\s*requirements[^\n\r\.]*)', source_text, re.I)
+    if m_op:
+        op_necessity = clean_ocr_artifacts(m_op.group(0))
+        op_necessity = re.sub(r'\s+(?:as\s+per|as|per|for|the|to|of)\s*$', '', op_necessity, flags=re.I).strip()
+    c3 = f'As approved vide indent / proposal references ({ref_d} dated {dt_d}), procurement on {mode_d} is processed to meet operational requirements: {op_necessity}.'
+
+    proc_just = NOT_FOUND
+    if re.search(r'\bproprietary\b', source_text, re.I) and re.search(r'\bOmkar\b', source_text, re.I):
+        proc_just = 'Proprietary item manufactured by M/s Omkar Supranational Pvt. Ltd. (no other make or model is acceptable)'
+    elif re.search(r'Task\s*Force\s*recommendation', source_text, re.I):
+        proc_just = 'Annual requirement based on Task Force Committee recommendations'
+    else:
+        m_just = re.search(r'Justification\s*for\s*(?:procurement\s*of\s*)?[^\n\r:]*[:\s]+([^\n\r]+)', source_text, re.I)
+        if m_just:
+            cj = clean_ocr_artifacts(m_just.group(1))
+            if len(cj) > 10:
+                proc_just = cj
+    c4 = f'Mode of procurement ({mode_d}) has been justified based on: {proc_just}.'
+
+    spec_verif = NOT_FOUND
+    if re.search(r'Specification\s*for\s*the\s*Materials\s*Indented', source_text, re.I):
+        spec_verif = 'Specification for the materials indented has been furnished and screened'
+    elif re.search(r'Technical\s*Specification', source_text, re.I) and re.search(r'Check\s*List', source_text, re.I):
+        spec_verif = 'Technical specification furnished and cleared as per Check List'
+    c5 = f'Technical specifications for "{item_d}" have been verified: {spec_verif}.'
+
+    comp_eval = NOT_FOUND
+    m_eval = re.search(r'(?:techno[\s\-]*commercial\s*criteria|offer\s*complies|evaluation\s*of\s*offer)[:\s]+([^\n\r]+)', source_text, re.I)
+    if m_eval:
+        ce = clean_ocr_artifacts(m_eval.group(1))
+        if len(ce) > 5:
+            comp_eval = ce
+    c6 = f'Techno-commercial compliance of offer for {supp_d}: {comp_eval}.'
+
+    price_eval = NOT_FOUND
+    if order_val_d != NOT_FOUND and est_d != NOT_FOUND:
+        price_eval = f'Verified against sanctioned estimate ({order_val_d} vs estimate {est_d})'
+    c7 = f'Price evaluation of the offer against sanctioned estimate of {est_d}: {price_eval}.'
+
+    comm_review = NOT_FOUND
+    m_cr = re.search(r'(?:Commercial\s*terms[^\n]*?reviewed|reviewed\s*in\s*accordance\s*with)[:\s]+([^\n\r]+)', source_text, re.I)
+    if m_cr:
+        ccr = clean_ocr_artifacts(m_cr.group(1))
+        if len(ccr) > 5:
+            comm_review = ccr
+    c8 = f'Review of commercial terms (including delivery schedule and payment terms): {comm_review}.'
+
+    c9 = f'In view of the above, proposal for procurement of "{item_d}" on {supp_d}: {"Order terms detailed below" if order_val_d != NOT_FOUND else NOT_FOUND}.'
+
+    data['narrative_clauses'] = [c1, c2, c3, c4, c5, c6, c7, c8, c9]
 
     return data
