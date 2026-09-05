@@ -1,0 +1,417 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAIL Material Management Module - Salem Steel Plant</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="bg-dark text-light">
+    <!-- Navigation Bar -->
+    <header class="navbar">
+        <div class="nav-container">
+            <div class="brand">
+                <div class="brand-logo">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="#38BDF8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M2 17L12 22L22 17" stroke="#38BDF8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M2 12L12 17L22 12" stroke="#38BDF8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <div class="brand-text">
+                    <span class="brand-title">SAIL MATERIAL MANAGEMENT MODULE</span>
+                    <span class="brand-subtitle">SALEM STEEL PLANT</span>
+                </div>
+            </div>
+            <nav class="nav-links">
+                <a href="#" class="nav-item active">Home</a>
+                <a href="#" class="nav-item">Dashboard</a>
+                <a href="#" class="nav-item">Material Tracking</a>
+                <a href="#" class="nav-item">Reports</a>
+                <a href="#" class="nav-item">User Profile</a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="main-layout">
+        <!-- Left Section: Upload Card & Generated Report -->
+        <section class="left-section">
+            <!-- Upload Container matching Screenshot 1 -->
+            <div class="card upload-card" id="uploadCard">
+                <div class="drop-zone" id="dropZone">
+                    <div class="pdf-icon-box">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                            <line x1="16" y1="13" x2="8" y2="13"></line>
+                            <line x1="16" y1="17" x2="8" y2="17"></line>
+                            <polyline points="10 9 9 9 8 9"></polyline>
+                        </svg>
+                        <span class="pdf-badge">PDF</span>
+                    </div>
+
+                    <h2 class="upload-title">UPLOAD YOUR PDF <span class="upload-sub">(Max 30 MB)</span></h2>
+                    
+                    <input type="file" id="fileInput" accept="application/pdf" style="display: none;">
+                    
+                    <div class="button-group">
+                        <button class="btn btn-select" id="selectBtn">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                                <polyline points="13 2 13 9 20 9"></polyline>
+                            </svg>
+                            <span>Select File</span>
+                        </button>
+                        <button class="btn btn-sample" id="sampleBtn" title="Load Sample SAIL Purchase Requisition (SMS/25/002 / A612002)">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38BDF8" stroke-width="2">
+                                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                            </svg>
+                            <span>Analyze Sample Requisition</span>
+                        </button>
+                    </div>
+
+                    <p class="drop-hint">or drag and drop your Purchase Requisition PDF here</p>
+                </div>
+
+                <!-- Processing / Loading Overlay -->
+                <div class="processing-box" id="processingBox" style="display: none;">
+                    <div class="spinner"></div>
+                    <h3 id="processStatus">Analyzing Document Content...</h3>
+                    <p class="process-detail">Extracting indent particulars, cost estimates, and sanction details</p>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar-fill" id="progressBar"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Output Display Container (Matching Screenshots 2, 3, 4) -->
+            <div class="card output-card" id="outputCard" style="display: none;">
+                <div class="output-header-bar">
+                    <div class="output-title-group">
+                        <span class="badge badge-success">Extraction Complete</span>
+                        <h2 class="output-main-heading">PURCHASE PROPOSAL NOTE</h2>
+                        <span class="output-subtext">Formatted strictly as per Salem Steel Plant standard template</span>
+                    </div>
+                    <div class="output-actions">
+                        <button class="btn btn-action" id="downloadDocxBtn">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="7 10 12 15 17 10"></polyline>
+                                <line x1="12" y1="15" x2="12" y2="3"></line>
+                            </svg>
+                            Download Word (.docx)
+                        </button>
+                        <button class="btn btn-action btn-secondary" id="printBtn">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="6 9 6 2 18 2 18 9"></polyline>
+                                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+                                <rect x="6" y="14" width="12" height="8"></rect>
+                            </svg>
+                            Print / PDF
+                        </button>
+                        <button class="btn btn-action btn-secondary" id="newUploadBtn">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                            </svg>
+                            New Upload
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Structured Proposal Document Content -->
+                <div class="proposal-document" id="printableArea">
+                    <!-- Table Section (Screenshot 2 & 3) -->
+                    <table class="proposal-table" id="tableMain">
+                        <thead>
+                            <tr class="row-header-main">
+                                <th colspan="2" class="th-item-desc" id="docItemDesc">Description of the item: Loading...</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Section: Indent Particulars -->
+                            <tr class="row-section-header">
+                                <td colspan="2">Indent Particulars</td>
+                            </tr>
+                            <tr>
+                                <td class="col-label">Purchase requisition no.</td>
+                                <td class="col-val" id="valPRNo">-</td>
+                            </tr>
+                            <tr>
+                                <td class="col-label">Indent date</td>
+                                <td class="col-val" id="valIndentDate">-</td>
+                            </tr>
+                            <tr>
+                                <td class="col-label">Indent raised by</td>
+                                <td class="col-val" id="valIndentRaisedBy">-</td>
+                            </tr>
+                            <tr>
+                                <td class="col-label">Estimate</td>
+                                <td class="col-val font-semibold" id="valEstimate">-</td>
+                            </tr>
+                            <tr>
+                                <td class="col-label">Basis of estimate</td>
+                                <td class="col-val" id="valBasisEstimate">-</td>
+                            </tr>
+                            <tr>
+                                <td class="col-label">First time procurement</td>
+                                <td class="col-val" id="valFirstTime">-</td>
+                            </tr>
+                            <tr>
+                                <td class="col-label">Number of budgetary offers received</td>
+                                <td class="col-val" id="valBudgetaryOffers">-</td>
+                            </tr>
+
+                            <!-- Section: Previous purchase details -->
+                            <tr class="row-section-header">
+                                <td colspan="2">Previous purchase details:</td>
+                            </tr>
+                            <tr>
+                                <td colspan="2" class="p-0">
+                                    <table class="nested-table" id="nestedPrevTable">
+                                        <thead>
+                                            <tr>
+                                                <th>Item sl. nos.</th>
+                                                <th>AT ref. no.</th>
+                                                <th>Previous purchase qty in nos./MT</th>
+                                                <th>Unit rate incl. GST</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="prevTableBody">
+                                            <!-- Dynamic rows -->
+                                        </tbody>
+                                    </table>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="col-label">Previous purchase mode of tender</td>
+                                <td class="col-val" id="valPrevMode">-</td>
+                            </tr>
+
+                            <!-- Section: Indent Approval -->
+                            <tr class="row-section-header">
+                                <td colspan="2">Indent Approval</td>
+                            </tr>
+                            <tr>
+                                <td class="col-label">Approving Authority</td>
+                                <td class="col-val" id="valApprovingAuth">-</td>
+                            </tr>
+                            <tr>
+                                <td class="col-label">Indent approved date</td>
+                                <td class="col-val" id="valApprovedDate">-</td>
+                            </tr>
+                            <tr>
+                                <td class="col-label">Mode of Tender</td>
+                                <td class="col-val" id="valModeTender">-</td>
+                            </tr>
+
+                            <!-- Section: Sanction Particulars -->
+                            <tr class="row-section-header">
+                                <td colspan="2">Sanction Particulars:</td>
+                            </tr>
+                            <tr>
+                                <td class="col-label">Name of the supplier</td>
+                                <td class="col-val font-semibold" id="valSupplierName">-</td>
+                            </tr>
+                            <tr>
+                                <td class="col-label">Order Value Incl. GST</td>
+                                <td class="col-val font-semibold text-accent" id="valOrderValue">-</td>
+                            </tr>
+                            <tr>
+                                <td class="col-label">Deviation wrt estimate</td>
+                                <td class="col-val" id="valDevWrtEstimate">-</td>
+                            </tr>
+
+                            <!-- Section: Negotiation Details -->
+                            <tr class="row-section-header">
+                                <td colspan="2">Negotiation Details</td>
+                            </tr>
+                            <tr>
+                                <td colspan="2" class="p-0">
+                                    <table class="nested-table" id="nestedNegTable">
+                                        <thead>
+                                            <tr id="negTableHeader">
+                                                <th>Parameter</th>
+                                                <th>Tender Price</th>
+                                                <th>After Negotiation</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="negTableBody">
+                                            <!-- Dynamic rows -->
+                                        </tbody>
+                                    </table>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- Narrative Clauses (Screenshots 3 & 4) -->
+                    <div class="narrative-section">
+                        <h3 class="narrative-heading">Proposal Justification & Observations</h3>
+                        <ol class="narrative-list" id="narrativeList">
+                            <!-- Populated dynamically -->
+                        </ol>
+                    </div>
+
+                    <!-- Proposed Order Terms Table (Screenshot 4) -->
+                    <div class="terms-section">
+                        <table class="proposal-table" id="tableTerms">
+                            <thead>
+                                <tr class="row-section-header">
+                                    <th colspan="2">Proposed Order Terms & Conditions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td class="col-label">Supplier Name</td>
+                                    <td class="col-val font-semibold" id="termSupplier">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="col-label">Item Description</td>
+                                    <td class="col-val" id="termItem">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="col-label">Total Order Value without GST</td>
+                                    <td class="col-val" id="termValNoGST">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="col-label">Total Order Value with GST</td>
+                                    <td class="col-val font-semibold text-accent" id="termValWithGST">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="col-label">Estimate</td>
+                                    <td class="col-val" id="termEstimate">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="col-label">% Dev wrt estimate</td>
+                                    <td class="col-val" id="termDev">-</td>
+                                </tr>
+                                <tr class="row-section-header">
+                                    <td colspan="2">Commercial Terms:</td>
+                                </tr>
+                                <tr>
+                                    <td class="col-label">Terms of Delivery</td>
+                                    <td class="col-val" id="termDelivery">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="col-label">Delivery Schedule</td>
+                                    <td class="col-val" id="termSchedule">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="col-label">Payment Terms</td>
+                                    <td class="col-val" id="termPayment">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="col-label">Offer Validity</td>
+                                    <td class="col-val" id="termValidity">-</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Approval Sections (Screenshot 4) -->
+                    <div class="approval-blocks">
+                        <div class="approval-block">
+                            <h4 class="block-title">Approval Sought For</h4>
+                            <p class="block-content" id="blockApprovalSought">-</p>
+                        </div>
+                        <div class="approval-block">
+                            <h4 class="block-title">Approving Authority / DOP / Manual Ref</h4>
+                            <p class="block-content" id="blockApprovingDop">-</p>
+                        </div>
+                        <div class="approval-block">
+                            <h4 class="block-title">Suggested Approval Path</h4>
+                            <p class="block-content font-mono" id="blockApprovalPath">-</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Right Section: Sidebar Activity & Status matching Screenshot 1 -->
+        <aside class="right-sidebar">
+            <!-- Recent Activity Card -->
+            <div class="card sidebar-card">
+                <h3 class="sidebar-heading">Recent Activity</h3>
+                <div class="activity-list">
+                    <div class="activity-item">
+                        <div class="activity-icon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <polyline points="12 6 12 12 16 14"></polyline>
+                            </svg>
+                        </div>
+                        <div class="activity-info">
+                            <span class="activity-title">Recent Upload</span>
+                            <span class="activity-subtitle" id="recentUploadText">No file uploaded yet</span>
+                        </div>
+                    </div>
+                    <div class="activity-item">
+                        <div class="activity-icon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8"></polyline>
+                                <line x1="16" y1="13" x2="8" y2="13"></line>
+                                <line x1="16" y1="17" x2="8" y2="17"></line>
+                            </svg>
+                        </div>
+                        <div class="activity-info">
+                            <span class="activity-title">Report Generated</span>
+                            <span class="activity-subtitle" id="reportGeneratedText">Awaiting document</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Module Status Card -->
+            <div class="card sidebar-card">
+                <h3 class="sidebar-heading">Module Status</h3>
+                <div class="activity-list">
+                    <div class="activity-item">
+                        <div class="activity-icon status-green">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#34D399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M9 11l3 3L22 4"></path>
+                                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+                            </svg>
+                        </div>
+                        <div class="activity-info">
+                            <span class="activity-title">Status</span>
+                            <span class="activity-subtitle status-live">Data Ready</span>
+                        </div>
+                    </div>
+                    <div class="activity-item">
+                        <div class="activity-icon status-blue">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <polyline points="12 6 12 12 14 10"></polyline>
+                            </svg>
+                        </div>
+                        <div class="activity-info">
+                            <span class="activity-title">Module</span>
+                            <span class="activity-subtitle">Data Live</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <!-- Footer matching Screenshot 1 -->
+    <footer class="footer">
+        <div class="footer-container">
+            <div class="footer-left">
+                <a href="#contact" class="footer-link">Contact Us</a>
+                <a href="#privacy" class="footer-link">Privacy Policy</a>
+            </div>
+            <div class="footer-right">
+                <span>Powered by SAIL IT Services</span>
+            </div>
+        </div>
+    </footer>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
