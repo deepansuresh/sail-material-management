@@ -452,25 +452,24 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
         if not supplier_name:
             supplier_name = NOT_FOUND
 
-    # Order values: ZERO CALCULATIONS!
-    # Strict rule: Only if explicitly printed for the proposal
+    # Order values: ZERO CALCULATIONS! ZERO CONVERSION OF ESTIMATE!
+    # Strict rule: Only if explicitly labeled as Order Value / PO Value in source text
     order_val_without_gst = NOT_FOUND
     order_val_with_gst = NOT_FOUND
 
-    # In sample_indent.pdf, explicitly printed cost estimate excluding / including GST exists:
-    m_excl = re.search(r'Total\s*estimated\s*value\s*excluding\s*GST[:\s]*(?:Rs\.?|INR|₹)?\s*([0-9,]+(?:\.\d+)?)', text, re.I)
-    if m_excl:
-        raw_excl = m_excl.group(1)
-        if '4,12,09,60,000' in raw_excl or '41,12,09,60,000' in raw_excl or '41120960000' in raw_excl:
-            raw_excl = '1,12,09,60,000'
-        order_val_without_gst = format_inr(raw_excl)
+    m_ov = re.search(r'(?:Total\s*Order\s*Value\s*(?:with|including)\s*GST|Order\s*Value\s*(?:with|including)\s*GST|PO\s*Value)[:\s]*(?:Rs\.?|INR|₹)?\s*([0-9,]+(?:\.\d+)?)', text, re.I)
+    if m_ov:
+        order_val_with_gst = format_inr(m_ov.group(1))
 
-    m_incl = re.search(r'Total\s*estimated\s*value\s*including\s*GST[:\s]*(?:Rs\.?|INR|₹)?\s*([0-9,]+(?:\.\d+)?)', text, re.I)
-    if m_incl:
-        raw_incl = m_incl.group(1)
-        if '41,32,27,32,800' in raw_incl:
-            raw_incl = '1,32,27,32,800'
-        order_val_with_gst = format_inr(raw_incl)
+    m_ov_excl = re.search(r'(?:Total\s*Order\s*Value\s*(?:without|excluding)\s*GST|Order\s*Value\s*(?:without|excluding)\s*GST)[:\s]*(?:Rs\.?|INR|₹)?\s*([0-9,]+(?:\.\d+)?)', text, re.I)
+    if m_ov_excl:
+        order_val_without_gst = format_inr(m_ov_excl.group(1))
+
+    # Price Offered: Only if explicitly labeled in text
+    price_offered = NOT_FOUND
+    m_po = re.search(r'(?:Price\s*Offered|Tender\s*Price|Offered\s*Price|Quoted\s*Price)[:\s]*(?:Rs\.?|INR|₹)?\s*([0-9,]+(?:\.\d+)?)', text, re.I)
+    if m_po:
+        price_offered = format_inr(m_po.group(1))
 
     # Zero arithmetic deviation
     dev_wrt_est = NOT_FOUND
@@ -478,7 +477,7 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
     m_dev = re.search(r'(?:Deviation\s*(?:in\s*value|in\s*%)?\s*w\.?r\.?t\.?\s*Estimate)[:\s]+([^\n\r]+)', text, re.I)
     if m_dev:
         c_dev = clean_str(m_dev.group(1))
-        if len(c_dev) > 1:
+        if len(c_dev) > 1 and not any(k in c_dev.lower() for k in ['not found', 'nil', 'none']):
             dev_wrt_est = c_dev
 
     # Commercial terms: Strictly NOT_FOUND unless clearly and authentically in proposal
@@ -494,7 +493,7 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
     # Tables & Clauses
     neg_headers = ['Parameter', 'Tender Price', 'After Negotiation']
     neg_rows = [
-        ['Price Offered', order_val_with_gst, order_val_with_gst],
+        ['Price Offered', price_offered, price_offered],
         ['Deviation in Value w.r.t Estimate', diff_val, diff_val],
         ['Deviation in % w.r.t Estimate', dev_wrt_est, dev_wrt_est],
         ['Approving Authority', approving_authority, approving_authority]
@@ -551,8 +550,11 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
 
     # Clause 7: Price evaluation against estimate (strictly from source text)
     price_eval = NOT_FOUND
-    if order_val_with_gst != NOT_FOUND and estimate_val != NOT_FOUND:
-        price_eval = f'Verified against sanctioned estimate ({order_val_with_gst} vs estimate {estimate_val})'
+    m_pe = re.search(r'(?:price\s*evaluation[^\n\r:]*|verified\s*against\s*sanctioned\s*estimate)[:\s]+([^\n\r]+)', text, re.I)
+    if m_pe:
+        cpe = clean_ocr_artifacts(m_pe.group(1))
+        if len(cpe) > 5 and 'not found' not in cpe.lower():
+            price_eval = cpe
     clause7 = f'Price evaluation of the offer against sanctioned estimate of {estimate_val}: {price_eval}.'
 
     # Clause 8: Commercial terms review (strictly from source text)
@@ -560,12 +562,18 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
     m_cr = re.search(r'(?:Commercial\s*terms[^\n]*?reviewed|reviewed\s*in\s*accordance\s*with)[:\s]+([^\n\r]+)', text, re.I)
     if m_cr:
         ccr = clean_ocr_artifacts(m_cr.group(1))
-        if len(ccr) > 5:
+        if len(ccr) > 5 and 'not found' not in ccr.lower():
             comm_review = ccr
     clause8 = f'Review of commercial terms (including delivery schedule and payment terms): {comm_review}.'
 
     # Clause 9: Proposal to place order (strictly from source text)
-    clause9 = f'In view of the above, proposal for procurement of "{item_desc}" on {supplier_name}: {"Order terms detailed below" if order_val_with_gst != NOT_FOUND else NOT_FOUND}.'
+    order_proposal = NOT_FOUND
+    m_op_clause = re.search(r'(?:proposal\s*for\s*procurement\s*of[^\n\r:]*|proposed\s*to\s*place\s*order[^\n\r:]*)[:\s]+([^\n\r]+)', text, re.I)
+    if m_op_clause:
+        cop = clean_ocr_artifacts(m_op_clause.group(1))
+        if len(cop) > 5 and 'not found' not in cop.lower():
+            order_proposal = cop
+    clause9 = f'In view of the above, proposal for procurement of "{item_desc}" on {supplier_name}: {order_proposal}.'
 
     clauses = [clause1, clause2, clause3, clause4, clause5, clause6, clause7, clause8, clause9]
 
@@ -584,7 +592,10 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
         }
     }
 
-    approval_sought = f'Approval of {approving_authority} is sought for placement of purchase order for procurement of {item_desc} on {supplier_name} for total order value with GST of {order_val_with_gst}.'
+    if order_val_with_gst != NOT_FOUND:
+        approval_sought = f'Approval of {approving_authority} is sought for placement of purchase order for procurement of {item_desc} on {supplier_name} for total order value with GST of {order_val_with_gst}.'
+    else:
+        approval_sought = f'Approval of {approving_authority} is sought for procurement of "{item_desc}" on {supplier_name.rstrip(".")}.'
 
     output_data = {
         'item_description': item_desc,
@@ -716,14 +727,29 @@ def audit_and_sanitize_proposal(data: dict, source_text: str) -> dict:
             val_str.endswith(('upon', 'the', 'of', 'from'))):
             ct[term_key] = NOT_FOUND
 
-    # 7. Order Values: strictly verify presence in source text & block forbidden numbers
+    # 7. Order Values & Price Offered: Strictly verify presence in source text & block forbidden numbers
     pot = data.get('proposed_order_terms', {})
     for key in ['total_order_value_without_gst', 'total_order_value_with_gst']:
         v = pot.get(key, '')
+        if v != NOT_FOUND:
+            if not re.search(r'(?:Total\s*Order\s*Value|Order\s*Value|PO\s*Value)', source_text, re.I):
+                pot[key] = NOT_FOUND
         for forbidden in ['6,33,660', '5,37,000', '8,50,490', '633660', '537000', '850490']:
             if forbidden in str(v):
                 pot[key] = NOT_FOUND
                 break
+
+    sp = data.get('sanction_particulars', {})
+    if sp.get('order_value_incl_gst') != NOT_FOUND:
+        if not re.search(r'(?:Total\s*Order\s*Value|Order\s*Value|PO\s*Value)', source_text, re.I):
+            sp['order_value_incl_gst'] = NOT_FOUND
+
+    # Price Offered in negotiation table
+    neg = data.get('negotiation_details', {})
+    if neg.get('rows'):
+        if not re.search(r'(?:Price\s*Offered|Tender\s*Price|Offered\s*Price|Quoted\s*Price)[:\s]*(?:Rs\.?|INR|₹)?\s*\d', source_text, re.I):
+            neg['rows'][0][1] = NOT_FOUND
+            neg['rows'][0][2] = NOT_FOUND
 
     # 8. Approval Path: strictly NOT_FOUND unless explicitly printed in source
     path = data.get('suggested_approval_path', '')
@@ -781,25 +807,40 @@ def audit_and_sanitize_proposal(data: dict, source_text: str) -> dict:
     m_eval = re.search(r'(?:techno[\s\-]*commercial\s*criteria|offer\s*complies|evaluation\s*of\s*offer)[:\s]+([^\n\r]+)', source_text, re.I)
     if m_eval:
         ce = clean_ocr_artifacts(m_eval.group(1))
-        if len(ce) > 5:
+        if len(ce) > 5 and 'not found' not in ce.lower():
             comp_eval = ce
     c6 = f'Techno-commercial compliance of offer for {supp_d}: {comp_eval}.'
 
     price_eval = NOT_FOUND
-    if order_val_d != NOT_FOUND and est_d != NOT_FOUND:
-        price_eval = f'Verified against sanctioned estimate ({order_val_d} vs estimate {est_d})'
+    m_pe = re.search(r'(?:price\s*evaluation[^\n\r:]*|verified\s*against\s*sanctioned\s*estimate)[:\s]+([^\n\r]+)', source_text, re.I)
+    if m_pe:
+        cpe = clean_ocr_artifacts(m_pe.group(1))
+        if len(cpe) > 5 and 'not found' not in cpe.lower():
+            price_eval = cpe
     c7 = f'Price evaluation of the offer against sanctioned estimate of {est_d}: {price_eval}.'
 
     comm_review = NOT_FOUND
     m_cr = re.search(r'(?:Commercial\s*terms[^\n]*?reviewed|reviewed\s*in\s*accordance\s*with)[:\s]+([^\n\r]+)', source_text, re.I)
     if m_cr:
         ccr = clean_ocr_artifacts(m_cr.group(1))
-        if len(ccr) > 5:
+        if len(ccr) > 5 and 'not found' not in ccr.lower():
             comm_review = ccr
     c8 = f'Review of commercial terms (including delivery schedule and payment terms): {comm_review}.'
 
-    c9 = f'In view of the above, proposal for procurement of "{item_d}" on {supp_d}: {"Order terms detailed below" if order_val_d != NOT_FOUND else NOT_FOUND}.'
+    order_proposal = NOT_FOUND
+    m_op_clause = re.search(r'(?:proposal\s*for\s*procurement\s*of[^\n\r:]*|proposed\s*to\s*place\s*order[^\n\r:]*)[:\s]+([^\n\r]+)', source_text, re.I)
+    if m_op_clause:
+        cop = clean_ocr_artifacts(m_op_clause.group(1))
+        if len(cop) > 5 and 'not found' not in cop.lower():
+            order_proposal = cop
+    c9 = f'In view of the above, proposal for procurement of "{item_d}" on {supp_d}: {order_proposal}.'
 
     data['narrative_clauses'] = [c1, c2, c3, c4, c5, c6, c7, c8, c9]
+
+    # Approval Sought For audit
+    if order_val_d != NOT_FOUND:
+        data['approval_sought_for'] = f'Approval of {data.get("indent_approval", {}).get("approving_authority", NOT_FOUND)} is sought for placement of purchase order for procurement of {item_d} on {supp_d} for total order value with GST of {order_val_d}.'
+    else:
+        data['approval_sought_for'] = f'Approval of {data.get("indent_approval", {}).get("approving_authority", NOT_FOUND)} is sought for procurement of "{item_d}" on {supp_d.rstrip(".")}.'
 
     return data
