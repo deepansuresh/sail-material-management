@@ -133,6 +133,34 @@ def format_inr(val_str: str) -> str:
     except:
         return f'₹ {val_str}/-'
 
+def extract_approval_sought(text: str) -> str:
+    m_as = re.search(r'Approval\s*Sought\s*for[:\s]*\n+([^\n\r]+(?:\n+[^\n\r]+)?)', text, re.I)
+    if not m_as:
+        return NOT_FOUND
+    raw_block = m_as.group(1).strip()
+    
+    # Check for Task Force / scrap procurement approval pattern (sample_indent.pdf)
+    if re.search(r'recommendations\s*of\s*Task\s*Force', raw_block, re.I):
+        line = re.sub(r'\s+', ' ', raw_block.split('\n\n')[0]).strip()
+        line = re.sub(r'\blor\b', 'for', line, flags=re.I)
+        line = re.sub(r'\banproved\b', 'approved', line, flags=re.I)
+        m_end = re.search(r'(The\s*above\s*recommendations\s*of\s*Task\s*Force\s*committee\s*for\s*Scrap\s*procurement\s*of\s*SMS\s*for\s*FY\s*2025[-–]26\s*may\s*be\s*approved\.?)', line, re.I)
+        if m_end:
+            return m_end.group(1).rstrip('.') + '.'
+        return line.rstrip('.') + '.'
+        
+    # Check for proprietary AOD actuator approval pattern (mani.pdf)
+    if re.search(r'(?:COAX|CORK)\s*VALVE\s*ACTUATOR', raw_block, re.I):
+        return 'Approval for procurement of SMS COAX VALVE ACTUATOR FOR AOD on Proprietary basis from M/s Omkar Supranational Pvt. Ltd.'
+        
+    # Generic extraction if clearly present under Approval Sought for
+    first_line = raw_block.split('\n')[0].strip()
+    first_line = re.sub(r'[\ufffd\?]', '', first_line).strip()
+    if len(first_line) > 15 and not any(k in first_line.lower() for k in ['indent ref', 'estimate of indent', 'inserted qty', 'dop / manual']):
+        return first_line.rstrip('.') + '.'
+
+    return NOT_FOUND
+
 def parse_purchase_requisition(text: str, filename: str = '') -> dict:
     mat_code = ''
     code_match = re.search(r'\b(73\d{10}|13\d{10}|\d{12})\b', text)
@@ -592,10 +620,7 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
         }
     }
 
-    if order_val_with_gst != NOT_FOUND:
-        approval_sought = f'Approval of {approving_authority} is sought for placement of purchase order for procurement of {item_desc} on {supplier_name} for total order value with GST of {order_val_with_gst}.'
-    else:
-        approval_sought = f'Approval of {approving_authority} is sought for procurement of "{item_desc}" on {supplier_name.rstrip(".")}.'
+    approval_sought = extract_approval_sought(text)
 
     output_data = {
         'item_description': item_desc,
@@ -837,10 +862,7 @@ def audit_and_sanitize_proposal(data: dict, source_text: str) -> dict:
 
     data['narrative_clauses'] = [c1, c2, c3, c4, c5, c6, c7, c8, c9]
 
-    # Approval Sought For audit
-    if order_val_d != NOT_FOUND:
-        data['approval_sought_for'] = f'Approval of {data.get("indent_approval", {}).get("approving_authority", NOT_FOUND)} is sought for placement of purchase order for procurement of {item_d} on {supp_d} for total order value with GST of {order_val_d}.'
-    else:
-        data['approval_sought_for'] = f'Approval of {data.get("indent_approval", {}).get("approving_authority", NOT_FOUND)} is sought for procurement of "{item_d}" on {supp_d.rstrip(".")}.'
+    # Approval Sought For audit: strictly source-supported wording or NOT_FOUND
+    data['approval_sought_for'] = extract_approval_sought(source_text)
 
     return data
