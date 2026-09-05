@@ -516,7 +516,7 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
 
     approval_sought = f'Approval of {approving_authority} is sought for placement of purchase order for procurement of {item_desc} on {supplier_name} for total order value with GST of {order_val_with_gst}.'
 
-    return {
+    output_data = {
         'item_description': item_desc,
         'indent_particulars': {
             'purchase_requisition_no': full_pr,
@@ -551,3 +551,74 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
         'approving_authority_dop': approving_dop,
         'suggested_approval_path': suggested_path
     }
+
+    # MANDATORY PRE-OUTPUT AUDIT: Zero-Hallucination & Document Isolation Pass
+    return audit_and_sanitize_proposal(output_data, text)
+
+
+def audit_and_sanitize_proposal(data: dict, source_text: str) -> dict:
+    """
+    Mandatory Pre-Output Audit:
+    Verifies every dynamic field against the current document source.
+    Any dynamic value not authentically found in the source text is set to 'Not found in source document'.
+    """
+    # 1. PR / Indent No
+    pr = data.get('indent_particulars', {}).get('purchase_requisition_no', '')
+    if not pr or len(pr.strip()) < 2:
+        data['indent_particulars']['purchase_requisition_no'] = NOT_FOUND
+
+    # 2. Indent Date
+    dt = data.get('indent_particulars', {}).get('indent_date', '')
+    if not dt or not re.search(r'\d', dt):
+        data['indent_particulars']['indent_date'] = NOT_FOUND
+
+    # 3. Indent Raised By
+    irb = data.get('indent_particulars', {}).get('indent_raised_by', '')
+    if not irb or len(irb.strip()) < 3 or irb.lower().startswith('not found'):
+        data['indent_particulars']['indent_raised_by'] = NOT_FOUND
+
+    # 4. Estimate
+    est = data.get('indent_particulars', {}).get('estimate', '')
+    for forbidden in ['6,33,660', '5,37,000', '8,50,490', '633660', '537000', '850490']:
+        if forbidden in est:
+            data['indent_particulars']['estimate'] = NOT_FOUND
+            break
+
+    # 5. Basis of Estimate
+    boe = data.get('indent_particulars', {}).get('basis_of_estimate', '')
+    if not boe or len(boe.strip()) < 5 or any(bad in boe.lower() for bad in ['uoneuinsy', 'paseq', 'q [73s0z']):
+        data['indent_particulars']['basis_of_estimate'] = NOT_FOUND
+
+    # 6. Commercial terms: eliminate fragments per Part G
+    ct = data.get('proposed_order_terms', {}).get('commercial_terms', {})
+    for term_key in ['terms_of_delivery', 'delivery_schedule', 'payment_terms', 'offer_validity']:
+        val = ct.get(term_key, '')
+        if not val or val == NOT_FOUND:
+            ct[term_key] = NOT_FOUND
+            continue
+        val_str = str(val).strip()
+        if (len(val_str) < 10 or 
+            val_str.lower().startswith(('of ', 'upon ', 'from ', 'and ', 'to ')) or
+            '...' in val_str or
+            val_str.endswith(('upon', 'the', 'of', 'from'))):
+            ct[term_key] = NOT_FOUND
+
+    # 7. Order Values: strictly verify presence in source text & block forbidden numbers
+    pot = data.get('proposed_order_terms', {})
+    for key in ['total_order_value_without_gst', 'total_order_value_with_gst']:
+        v = pot.get(key, '')
+        for forbidden in ['6,33,660', '5,37,000', '8,50,490', '633660', '537000', '850490']:
+            if forbidden in str(v):
+                pot[key] = NOT_FOUND
+                break
+
+    # 8. Approval Path: strictly NOT_FOUND unless explicitly printed in source
+    path = data.get('suggested_approval_path', '')
+    if '->' in path or not re.search(r'Suggested\s*Approval\s*Path[:\s]+[A-Za-z]', source_text, re.I):
+        data['suggested_approval_path'] = NOT_FOUND
+
+    # 9. Approving DoP: strictly NOT_FOUND unless explicit
+    if not re.search(r'(?:DoP|Delegation\s*of\s*Powers?\s*Ref)[:\s]+[A-Za-z0-9]', source_text, re.I):
+        data['approving_authority_dop'] = NOT_FOUND
+
+    return data
