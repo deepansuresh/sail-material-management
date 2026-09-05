@@ -84,56 +84,109 @@ function handleFileUpload(file) {
     }
 
     currentProposalData = null;
-    showProcessing('Uploading & Scanning ' + file.name + '...');
+    showProcessing('Preparing upload for ' + file.name + '...');
     updateSidebarActivity(file.name);
 
     const formData = new FormData();
     formData.append('file', file);
 
-    fetch('/api/analyze', {
-        method: 'POST',
-        headers: {
-            'ngrok-skip-browser-warning': 'true'
-        },
-        body: formData
-    })
-    .then(res => {
-        if (!res.ok) throw new Error('Failed to analyze document.');
-        return res.json();
-    })
-    .then(data => {
-        renderProposal(data);
-    })
-    .catch(err => {
-        console.error(err);
-        alert('Error processing file: ' + err.message);
+    const progressBar = document.getElementById('progressBar');
+    const processStatus = document.getElementById('processStatus');
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/analyze', true);
+
+    xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+            const percent = Math.round((e.loaded / e.total) * 100);
+            const loadedMB = (e.loaded / (1024 * 1024)).toFixed(1);
+            const totalMB = (e.total / (1024 * 1024)).toFixed(1);
+            if (progressBar) progressBar.style.width = `${Math.min(percent, 90)}%`;
+            if (processStatus) {
+                if (percent < 100) {
+                    processStatus.innerText = `Uploading Document: ${percent}% (${loadedMB} MB / ${totalMB} MB)...`;
+                } else {
+                    processStatus.innerText = 'Upload received. Extracting text & running OCR analysis...';
+                    if (progressBar) progressBar.style.width = '95%';
+                }
+            }
+        }
+    };
+
+    xhr.onload = () => {
+        if (xhr.status === 200) {
+            try {
+                const data = JSON.parse(xhr.responseText);
+                if (progressBar) progressBar.style.width = '100%';
+                renderProposal(data);
+            } catch (err) {
+                console.error(err);
+                alert('Error parsing server response: ' + err.message);
+                resetUploadUI();
+            }
+        } else {
+            let detail = 'Server returned status ' + xhr.status;
+            try {
+                const errJson = JSON.parse(xhr.responseText);
+                if (errJson.detail) detail = errJson.detail;
+            } catch (e) {}
+            console.error('Server error:', xhr.status, xhr.responseText);
+            alert('Analysis Error: ' + detail);
+            resetUploadUI();
+        }
+    };
+
+    xhr.onerror = () => {
+        console.error('XHR network error');
+        alert('Network connection error while uploading to server. Please check your connection.');
         resetUploadUI();
-    });
+    };
+
+    xhr.ontimeout = () => {
+        console.error('XHR timeout');
+        alert('Analysis request timed out after 3 minutes. Please try again.');
+        resetUploadUI();
+    };
+
+    xhr.timeout = 180000; // 3 minutes timeout
+    xhr.send(formData);
 }
 
 function loadSampleRequisition() {
     currentProposalData = null;
-    showProcessing('Analyzing Uploaded SAIL Purchase Requisition (SMS/25/002 / A612002)...');
-    updateSidebarActivity('media_1788530530901.pdf (SAIL PR A612002)');
+    showProcessing('Analyzing Sample SAIL Purchase Requisition...');
+    updateSidebarActivity('sample_indent.pdf (SAIL Indent)');
 
-    fetch('/api/load-sample', {
-        method: 'POST',
-        headers: {
-            'ngrok-skip-browser-warning': 'true'
+    const progressBar = document.getElementById('progressBar');
+    if (progressBar) progressBar.style.width = '50%';
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/load-sample', true);
+
+    xhr.onload = () => {
+        if (xhr.status === 200) {
+            try {
+                const data = JSON.parse(xhr.responseText);
+                if (progressBar) progressBar.style.width = '100%';
+                renderProposal(data);
+            } catch (err) {
+                console.error(err);
+                alert('Error parsing sample data: ' + err.message);
+                resetUploadUI();
+            }
+        } else {
+            alert('Error loading sample: Server returned status ' + xhr.status);
+            resetUploadUI();
         }
-    })
-    .then(res => {
-        if (!res.ok) throw new Error('Failed to load sample requisition.');
-        return res.json();
-    })
-    .then(data => {
-        renderProposal(data);
-    })
-    .catch(err => {
-        console.error(err);
-        alert('Error loading sample: ' + err.message);
+    };
+
+    xhr.onerror = () => {
+        alert('Network error loading sample requisition.');
         resetUploadUI();
-    });
+    };
+
+    xhr.timeout = 60000;
+    xhr.send();
 }
 
 function showProcessing(statusText) {
