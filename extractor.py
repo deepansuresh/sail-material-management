@@ -1,4 +1,9 @@
 import os
+os.environ["OMP_THREAD_LIMIT"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+
 import re
 import fitz
 from PIL import Image
@@ -16,7 +21,7 @@ elif shutil.which("tesseract"):
 def extract_text_from_pdf(pdf_path: str, max_pages: int = 10) -> str:
     """
     Extracts text page by page. Prefers digital text; falls back to fast OCR when empty or short.
-    Uses dpi=85 and --oem 1 to ensure fast, low-memory OCR execution that stays well within 512MB RAM and 60-second timeouts.
+    Uses bounded pages (max 10) at dpi=110 with OMP_THREAD_LIMIT=1 and timeout=15 to ensure reliable cloud execution.
     """
     doc = fitz.open(pdf_path)
     full_text_list = []
@@ -29,25 +34,32 @@ def extract_text_from_pdf(pdf_path: str, max_pages: int = 10) -> str:
         has_tesseract = False
 
     total_pages = min(len(doc), max_pages)
+    print(f"[EXTRACTOR] Processing {total_pages} pages from {os.path.basename(pdf_path)}...", flush=True)
+
     for page_num in range(total_pages):
         page = doc[page_num]
         text = page.get_text()
         
         if len(text.strip()) > 60:
+            print(f"[EXTRACTOR] Page {page_num + 1}/{total_pages}: Digital text found ({len(text)} chars)", flush=True)
             full_text_list.append(f"--- PAGE {page_num + 1} ---\n" + text)
         elif has_tesseract:
+            print(f"[EXTRACTOR] Page {page_num + 1}/{total_pages}: Running OCR...", flush=True)
             try:
                 pix = page.get_pixmap(dpi=110)
                 img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
                 del pix
-                ocr_text = pytesseract.image_to_string(img)
+                ocr_text = pytesseract.image_to_string(img, timeout=15)
                 del img
                 import gc
                 gc.collect()
+                print(f"[EXTRACTOR] Page {page_num + 1}/{total_pages}: OCR complete ({len(ocr_text)} chars)", flush=True)
                 full_text_list.append(f"--- PAGE {page_num + 1} (OCR) ---\n" + ocr_text)
             except Exception as e:
+                print(f"[EXTRACTOR] Page {page_num + 1}/{total_pages}: OCR error ({e})", flush=True)
                 full_text_list.append(f"--- PAGE {page_num + 1} (Error: {e}) ---\n")
         else:
+            print(f"[EXTRACTOR] Page {page_num + 1}/{total_pages}: No digital text and no OCR available", flush=True)
             full_text_list.append(f"--- PAGE {page_num + 1} ---\n" + text)
                 
     doc.close()
