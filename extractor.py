@@ -152,9 +152,12 @@ def parse_purchase_requisition(text: str, filename: str = "") -> dict:
     # -------------------------------------------------------------
     indent_ref = ""
     m_ind_lbl = re.search(r'(?:Indent\s*Reference\s*(?:number|no\.?)|Indentor[\'’]?s?\s*Reference\s*No\.?)[:\s]*([A-Za-z0-9\/\-_]+)', text, re.IGNORECASE)
-    if m_ind_lbl:
-        indent_ref = clean_str(m_ind_lbl.group(1))
-    else:
+    if m_ind_lbl and re.search(r'\d', m_ind_lbl.group(1)):
+        cand_ind = clean_str(m_ind_lbl.group(1))
+        if cand_ind.lower() not in ['to', 'the', 'for', 'and', 'ref', 'indent']:
+            indent_ref = cand_ind
+
+    if not indent_ref:
         # Match SAIL indent reference format: SMSE/27/04, SMS/25/002, 64/26/409
         m_ind = re.search(r'\b(SMS[A-Z0-9\/\-_]{2,10}|[A-Za-z0-9]{2,8}\/\d{2}\/[A-Za-z0-9]{2,5})\b', text)
         if m_ind:
@@ -167,10 +170,13 @@ def parse_purchase_requisition(text: str, filename: str = "") -> dict:
 
     pr_no = ""
     m_pr_lbl = re.search(r'(?:INDENT\s*Number|Purchase\s*Requisition\s*No\.?|Purchase\s*Dept\s*Reference\s*Number)[:\s]*([A-Za-z0-9\/\-_]+)', text, re.IGNORECASE)
-    if m_pr_lbl and m_pr_lbl.group(1).lower() not in ['date', 'ci', 'number']:
-        pr_no = clean_str(m_pr_lbl.group(1))
-    else:
-        m_pr_fmt = re.search(r'\b(A61\d{4}|[A-Z]\d{6})\b', text)
+    if m_pr_lbl and re.search(r'\d', m_pr_lbl.group(1)):
+        cand_pr = clean_str(m_pr_lbl.group(1))
+        if cand_pr.lower() not in ['salem', 'steel', 'plant', 'date', 'ci', 'number', 'dept']:
+            pr_no = cand_pr
+
+    if not pr_no:
+        m_pr_fmt = re.search(r'\b(A61\d{4}|[A-Z]\d{6}|\d{7,8})\b', text)
         if m_pr_fmt and m_pr_fmt.group(1) != indent_ref:
             pr_no = m_pr_fmt.group(1)
 
