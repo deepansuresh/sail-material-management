@@ -1,0 +1,8 @@
+﻿services:
+  - type: web
+    name: sail-material-management
+    env: docker
+    plan: free
+    region: oregon
+    healthCheckPath: /
+    autoDeploy: true
