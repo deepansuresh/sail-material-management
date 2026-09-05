@@ -215,11 +215,15 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
     if m_date:
         indent_date = clean_str(m_date.group(1))
     else:
-        m_202x = re.search(r'\b(\d{2}[\/\-\.]\d{2}[\/\-\.]202[4-6])\b', text)
-        if m_202x:
-            indent_date = m_202x.group(1)
+        m_pale = re.search(r'(?:Date|pale|Dt)[^\w\n\r]{1,3}\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})', text, re.I)
+        if m_pale:
+            indent_date = clean_str(m_pale.group(1))
         else:
-            indent_date = NOT_FOUND
+            m_202x = re.search(r'\b(\d{2}[\/\-\.]\d{2}[\/\-\.]202[4-6])\b', text)
+            if m_202x:
+                indent_date = m_202x.group(1)
+            else:
+                indent_date = NOT_FOUND
 
     # Indent Raised By
     init_name = ''
