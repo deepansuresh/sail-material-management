@@ -4,33 +4,50 @@ import fitz
 from PIL import Image
 import pytesseract
 
+import shutil
+
 TESSERACT_EXE = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 if os.path.exists(TESSERACT_EXE):
     pytesseract.pytesseract.tesseract_cmd = TESSERACT_EXE
+elif shutil.which("tesseract"):
+    pytesseract.pytesseract.tesseract_cmd = shutil.which("tesseract")
 
 
-def extract_text_from_pdf(pdf_path: str, max_pages: int = 25) -> str:
+def extract_text_from_pdf(pdf_path: str, max_pages: int = 15) -> str:
     """
-    Extracts text page by page. Prefers digital text; falls back to high-res OCR when empty or short.
+    Extracts text page by page. Prefers digital text; falls back to OCR when empty or short.
+    Limits DPI to 120 and frees pixmaps immediately to keep memory usage well within 512MB RAM limits.
     """
     doc = fitz.open(pdf_path)
     full_text_list = []
     
+    has_tesseract = False
+    try:
+        if shutil.which("tesseract") or os.path.exists(TESSERACT_EXE):
+            has_tesseract = True
+    except:
+        has_tesseract = False
+
     for page_num in range(min(len(doc), max_pages)):
         page = doc[page_num]
         text = page.get_text()
         
         if len(text.strip()) > 60:
             full_text_list.append(f"--- PAGE {page_num + 1} ---\n" + text)
-        else:
+        elif has_tesseract:
             try:
-                pix = page.get_pixmap(dpi=150)
+                pix = page.get_pixmap(dpi=120)
                 img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                del pix
                 ocr_text = pytesseract.image_to_string(img)
+                del img
                 full_text_list.append(f"--- PAGE {page_num + 1} (OCR) ---\n" + ocr_text)
             except Exception as e:
                 full_text_list.append(f"--- PAGE {page_num + 1} (Error: {e}) ---\n")
+        else:
+            full_text_list.append(f"--- PAGE {page_num + 1} ---\n" + text)
                 
+    doc.close()
     return "\n\n".join(full_text_list)
 
 
