@@ -1,4 +1,4 @@
-﻿import os
+import os
 import shutil
 import tempfile
 from fastapi import FastAPI, UploadFile, File, HTTPException, Response
@@ -50,39 +50,71 @@ async def serve_index():
         return HTMLResponse(content=f.read())
 
 
+@app.get("/api/health")
+def health_check():
+    import platform, subprocess, shutil
+    tess = shutil.which("tesseract")
+    tess_ver = None
+    if tess:
+        try:
+            r = subprocess.run([tess, "--version"], capture_output=True, text=True, timeout=3)
+            tess_ver = r.stdout.splitlines()[0] if r.stdout else r.stderr.splitlines()[0]
+        except Exception as e:
+            tess_ver = str(e)
+            
+    return {
+        "status": "ok",
+        "is_docker": os.path.exists("/.dockerenv"),
+        "platform": platform.platform(),
+        "python_version": platform.python_version(),
+        "tesseract_path": tess,
+        "tesseract_version": tess_ver
+    }
+
+
 @app.post("/api/analyze")
-async def analyze_pdf(file: UploadFile = File(...)):
+def analyze_pdf(file: UploadFile = File(...)):
     """
     Reads newly uploaded PDF from scratch.
-    Zero caching, zero previous data reuse.
+    Synchronous def runs in FastAPI threadpool to prevent blocking the asyncio event loop.
     """
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
 
-    dest_path = os.path.join(UPLOADS_DIR, file.filename)
-    with open(dest_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
+    import traceback
+    tmp_path = None
     try:
+        suffix = os.path.splitext(file.filename)[1]
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp_path = tmp.name
+            shutil.copyfileobj(file.file, tmp)
+
         # Extract freshly from the newly uploaded PDF
-        extracted_text = extractor.extract_text_from_pdf(dest_path, max_pages=25)
+        extracted_text = extractor.extract_text_from_pdf(tmp_path, max_pages=15)
         
         # Parse into fixed structured proposal template
         proposal_data = extractor.parse_purchase_requisition(extracted_text, filename=file.filename)
         return proposal_data
     except Exception as e:
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except:
+                pass
 
 
 @app.post("/api/load-sample")
-async def load_sample():
+def load_sample():
     """
-    Loads sample document dynamically using the exact same parsing pipeline.
+    Loads sample document dynamically using the exact same parsing pipeline in threadpool.
     """
     target = SAMPLE_PDF_PATH if os.path.exists(SAMPLE_PDF_PATH) else MANI_PDF_PATH
     if os.path.exists(target):
         try:
-            extracted_text = extractor.extract_text_from_pdf(target, max_pages=20)
+            extracted_text = extractor.extract_text_from_pdf(target, max_pages=15)
             proposal_data = extractor.parse_purchase_requisition(extracted_text, filename=os.path.basename(target))
             return proposal_data
         except Exception as e:
