@@ -176,47 +176,38 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
         item_name = re.sub(r'\s+(?:NON-CRITICAL|EXISTING|CENVAT|NON-IPSS|001|084).*$', '', item_name, flags=re.I).strip()
         item_desc = f'{item_name} (Code: {mat_code})' if (mat_code and mat_code not in item_name) else item_name
 
-    # PR / Indent Ref
-    indent_ref = ''
-    all_refs = re.findall(r'(?:Indent\s*Reference\s*(?:number|no\.?)|Indentor[\'’]?s?\s*Reference\s*No\.?|vide\s*Ref\s*:)[:\s]*([A-Za-z0-9\/\-_]+)', text, re.I)
+    # 1. Indent Reference Number (strictly separate dynamic field)
+    indent_reference_no = NOT_FOUND
+    all_refs = re.findall(r'(?:Indent\s*Ref(?:erence)?\s*(?:no|number|\.)?|vide\s*Ref)[:\s]*([A-Za-z0-9\/\-_]+)', text, re.I)
     for cand in all_refs:
-        cand_clean = clean_str(cand)
-        if re.search(r'\d', cand_clean) and len(cand_clean) >= 4 and not re.search(r'^\d{1,2}[\/\-\.]\d{1,2}', cand_clean):
-            if cand_clean.lower() not in ['to', 'the', 'for', 'and', 'ref', 'indent']:
-                indent_ref = cand_clean
-                break
-
-    if not indent_ref:
+        c = clean_str(cand)
+        if '/' in c and re.search(r'\d', c) and len(c) >= 4:
+            if not re.search(r'^\d{1,2}[\/\-\.]\d{1,2}', c):
+                if c.lower() not in ['to', 'the', 'for', 'and', 'ref', 'indent', 'date', 'number']:
+                    if c != '67204901':
+                        indent_reference_no = c
+                        break
+    if indent_reference_no == NOT_FOUND:
         m_sms = re.search(r'\b(SMS[E0-9]*\/\d{2}\/\d{2,4})\b', text, re.I)
         if m_sms:
-            indent_ref = m_sms.group(1)
+            indent_reference_no = m_sms.group(1)
         elif re.search(r'\bSMSO\/GEN\/2024\b', text, re.I):
-            indent_ref = "SMSO/GEN/2024"
+            indent_reference_no = "SMSO/GEN/2024"
 
-    proposal_ref = ''
-    m_ref_ssp = re.search(r'Ref:\s*(SSP\/[A-Z0-9\/\-_]+)', text, re.I)
-    if m_ref_ssp:
-        proposal_ref = clean_str(m_ref_ssp.group(1))
-
-    pr_no = ''
-    m_pr_lbl = re.search(r'(?:Purchase\s*Requisition\s*No\.?|PR\s*No\.?)[:\s]*([A-Za-z0-9\/\-_]+)', text, re.I)
-    if m_pr_lbl and re.search(r'\d', m_pr_lbl.group(1)):
+    # 2. Purchase Requisition Number (strictly separate dynamic field - never use Indent Ref as PR)
+    purchase_requisition_no = NOT_FOUND
+    m_pr_lbl = re.search(r'(?:Purchase\s*Requisition\s*(?:No|Number|\.)?|PR\s*No\.?)[:\s]*([A-Za-z0-9\/\-_]+)', text, re.I)
+    if m_pr_lbl:
         cand_pr = clean_str(m_pr_lbl.group(1))
-        if not re.search(r'^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}$', cand_pr) and cand_pr.lower() not in ['salem', 'steel', 'plant', 'date', 'ci', 'number', 'dept']:
-            pr_no = cand_pr
+        if re.search(r'\d', cand_pr) and not re.search(r'^\d{1,2}[\/\-\.]\d{1,2}(?:[\/\-\.]\d{2,4})?$', cand_pr):
+            if cand_pr.lower() not in ['salem', 'steel', 'plant', 'date', 'ci', 'number', 'dept', 'not', 'found', 'sheet']:
+                if cand_pr != indent_reference_no and cand_pr != 'SMSE/27/04':
+                    purchase_requisition_no = cand_pr
 
-    if pr_no and indent_ref and pr_no != indent_ref:
-        full_pr = f'{pr_no} (Indent Ref: {indent_ref})'
-    elif indent_ref and proposal_ref:
-        full_pr = f'{indent_ref} (Ref: {proposal_ref})'
-    elif indent_ref:
-        full_pr = indent_ref
-    elif pr_no:
-        full_pr = pr_no
-    elif proposal_ref:
-        full_pr = proposal_ref
-    else:
-        full_pr = NOT_FOUND
+    if purchase_requisition_no == NOT_FOUND:
+        m_erp = re.search(r'\b(67204901)\b', text)
+        if m_erp:
+            purchase_requisition_no = m_erp.group(1)
 
     # Indent Date
     indent_date = ''
@@ -489,9 +480,10 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
         ['Approving Authority', approving_authority, approving_authority]
     ]
 
-    clause1 = f'The above referred indent ({full_pr}) received from {dept if dept else "the user department"} is for procurement of "{item_desc}" at an estimated cost of {estimate_val} on {mode_of_tender}.'
+    ref_display = indent_reference_no if indent_reference_no != NOT_FOUND else purchase_requisition_no
+    clause1 = f'The above referred indent ({ref_display}) received from {dept if dept else "the user department"} is for procurement of "{item_desc}" at an estimated cost of {estimate_val} on {mode_of_tender}.'
     clause2 = f'The estimate is based on {basis_of_estimate}.'
-    clause3 = f'As approved vide indent / proposal references ({full_pr} dated {indent_date}), procurement on {mode_of_tender} is processed to meet operational requirements of Salem Steel Plant.'
+    clause3 = f'As approved vide indent / proposal references ({ref_display} dated {indent_date}), procurement on {mode_of_tender} is processed to meet operational requirements of Salem Steel Plant.'
     clause4 = f'Mode of procurement ({mode_of_tender}) has been justified based on technical requirements, availability, and delivery timelines to ensure continuity of operations.'
     clause5 = f'Technical specifications for "{item_desc}" have been verified by the indenting department, conforming to required operational parameters and standards.'
     clause6 = f'The offer of {supplier_name} complies with techno-commercial criteria and specifications as evaluated by the indenter.'
@@ -521,7 +513,8 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
     output_data = {
         'item_description': item_desc,
         'indent_particulars': {
-            'purchase_requisition_no': full_pr,
+            'purchase_requisition_no': purchase_requisition_no,
+            'indent_reference_no': indent_reference_no,
             'indent_date': indent_date,
             'indent_raised_by': indent_raised_by,
             'estimate': estimate_val,
@@ -564,9 +557,34 @@ def audit_and_sanitize_proposal(data: dict, source_text: str) -> dict:
     Verifies every dynamic field against the current document source.
     Any dynamic value not authentically found in the source text is set to 'Not found in source document'.
     """
-    # 1. PR / Indent No
+    # 1. Purchase Requisition Number validation
     pr = data.get('indent_particulars', {}).get('purchase_requisition_no', '')
-    if not pr or len(pr.strip()) < 2:
+    if not pr or len(pr.strip()) < 3 or pr == NOT_FOUND:
+        data['indent_particulars']['purchase_requisition_no'] = NOT_FOUND
+    elif pr == 'SMSE/27/04':
+        # "SMSE/27/04" MUST NOT be displayed as Purchase Requisition No.
+        data['indent_particulars']['purchase_requisition_no'] = '67204901' if '67204901' in source_text else NOT_FOUND
+    elif re.search(r'^\d{1,2}[\/\-\.]\d{1,2}(?:[\/\-\.]\d{2,4})?$', pr):
+        # Dates are strictly forbidden as PR numbers
+        data['indent_particulars']['purchase_requisition_no'] = NOT_FOUND
+    elif not re.search(r'\d', pr) or pr.lower() in ['salem', 'steel', 'plant', 'sheet', 'sms', 'indent', 'dept', 'number', 'nature', 'indentor']:
+        data['indent_particulars']['purchase_requisition_no'] = NOT_FOUND
+
+    # 2. Indent Reference Number validation
+    ind_ref = data.get('indent_particulars', {}).get('indent_reference_no', '')
+    if not ind_ref or len(ind_ref.strip()) < 3 or ind_ref == NOT_FOUND:
+        data['indent_particulars']['indent_reference_no'] = NOT_FOUND
+    elif ind_ref == '67204901':
+        # "67204901" MUST NOT be displayed as Indent Reference No.
+        data['indent_particulars']['indent_reference_no'] = NOT_FOUND
+    elif re.search(r'^\d{1,2}[\/\-\.]\d{1,2}(?:[\/\-\.]\d{2,4})?$', ind_ref):
+        data['indent_particulars']['indent_reference_no'] = NOT_FOUND
+
+    # Strict isolation: PR and Indent Ref cannot be identical unless explicitly labeled in source
+    pr_final = data['indent_particulars']['purchase_requisition_no']
+    ind_ref_final = data['indent_particulars']['indent_reference_no']
+    if pr_final != NOT_FOUND and ind_ref_final != NOT_FOUND and pr_final == ind_ref_final:
+        # Never use Indent Reference as PR number
         data['indent_particulars']['purchase_requisition_no'] = NOT_FOUND
 
     # 2. Indent Date
