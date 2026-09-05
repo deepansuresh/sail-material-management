@@ -90,7 +90,7 @@ def analyze_pdf(file: UploadFile = File(...)):
             shutil.copyfileobj(file.file, tmp)
 
         # Extract freshly from the newly uploaded PDF
-        extracted_text = extractor.extract_text_from_pdf(tmp_path, max_pages=15)
+        extracted_text = extractor.extract_text_from_pdf(tmp_path, max_pages=10)
         
         # Parse into fixed structured proposal template
         proposal_data = extractor.parse_purchase_requisition(extracted_text, filename=file.filename)
@@ -114,7 +114,7 @@ def load_sample():
     target = SAMPLE_PDF_PATH if os.path.exists(SAMPLE_PDF_PATH) else MANI_PDF_PATH
     if os.path.exists(target):
         try:
-            extracted_text = extractor.extract_text_from_pdf(target, max_pages=15)
+            extracted_text = extractor.extract_text_from_pdf(target, max_pages=10)
             proposal_data = extractor.parse_purchase_requisition(extracted_text, filename=os.path.basename(target))
             return proposal_data
         except Exception as e:
