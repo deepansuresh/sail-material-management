@@ -64,18 +64,30 @@ def extract_text_from_pdf(pdf_path: str, max_pages: int = 10, total_timeout_sec:
                 img = Image.frombytes("L", [pix.width, pix.height], pix.samples)
                 del pix
                 
-                # Fast LSTM engine (--oem 1) with per-page timeout
-                ocr_text = pytesseract.image_to_string(img, config="--oem 1", timeout=12)
-                del img
+                ocr_text = ""
+                try:
+                    # Fast LSTM engine (--oem 1) with per-page timeout (12 seconds)
+                    ocr_text = pytesseract.image_to_string(img, config="--oem 1", timeout=12)
+                except RuntimeError as e:
+                    if "timeout" in str(e).lower():
+                        print(f"[EXTRACTOR] Page {p_num + 1}/{total_pages}: OCR page timed out (12s limit reached): {e}", flush=True)
+                        ocr_text = ""
+                    else:
+                        raise
+                except TimeoutError as te:
+                    print(f"[EXTRACTOR] Page {p_num + 1}/{total_pages}: TimeoutError: {te}", flush=True)
+                    ocr_text = ""
+                finally:
+                    del img
                 
                 print(f"[EXTRACTOR] Page {p_num + 1}/{total_pages}: OCR complete ({len(ocr_text)} chars)", flush=True)
-                extracted_pages.append(f"--- PAGE {p_num + 1} (OCR) ---\n" + ocr_text)
+                if ocr_text:
+                    extracted_pages.append(f"--- PAGE {p_num + 1} (OCR) ---\n" + ocr_text)
+                else:
+                    extracted_pages.append(f"--- PAGE {p_num + 1} (OCR Timeout/Empty) ---\n")
             else:
                 print(f"[EXTRACTOR] Page {p_num + 1}/{total_pages}: No digital text and no OCR available", flush=True)
                 extracted_pages.append(f"--- PAGE {p_num + 1} ---\n" + digital_text)
-        except (pytesseract.TesseractTimeoutError, TimeoutError):
-            print(f"[EXTRACTOR] Page {p_num + 1}/{total_pages}: OCR page timed out (12s limit reached), skipping page.", flush=True)
-            extracted_pages.append(f"--- PAGE {p_num + 1} (OCR Timeout) ---\n")
         except Exception as e:
             print(f"[EXTRACTOR] Page {p_num + 1}/{total_pages}: Error ({e})", flush=True)
             extracted_pages.append(f"--- PAGE {p_num + 1} (Error: {e}) ---\n")
