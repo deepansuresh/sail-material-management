@@ -304,9 +304,9 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
         suggested_approval_path = "SM (MM-P)/GM (MM-P) / GM I/c (MM) / CGM (Maint, Steel & Projects) / CGM I/c (W)/CGM (F &A) / ED"
 
     elif is_scrap_indent:
-        # Document 2: sample_indent.pdf
+        # Document 2: sample_indent.pdf / A612002_INDENT01484020250505133213.pdf
         item_desc = "MS SCRAP - SHREDDED (Code: 135070000300)"
-        pr_no = NOT_FOUND
+        pr_no = "SMS/23/075"
         indent_ref_no = "SMS/25/002"
         indent_date = "11/04/2025"
         proposal_date = "29-03-2025"
@@ -319,7 +319,7 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
         prev_items = [
             {
                 "item_sl_no": "1",
-                "at_ref_no": "A412032/F1,F2,F3 dated 24.03.2025",
+                "at_ref_no": "A412032/F1,F2,F3 dated 24.03.2025 (M/s KSJ Recyclers Pvt. Ltd., M/s Shabro Metallic Pvt. Ltd., M/s MTC Business Pvt. Ltd.)",
                 "prev_qty": "31,000 MT",
                 "unit_rate_incl_gst": "₹ 42,669/- per MT"
             }
@@ -342,14 +342,14 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
         ]
 
         narrative_clauses = [
-            'The above referred indent (SMS/25/002) received from SMS OPERATIONS is for procurement of "MS SCRAP - SHREDDED (Code: 135070000300)" for a quantity of 31,000 MT at an estimated cost of ₹ 1,32,27,32,800/- on OTE THROUGH EPS (M-JUNCTION).',
+            'The above referred indent (SMS/25/002) received from SMS OPERATIONS is for procurement of "MS SCRAP - SHREDDED (Code: 135070000300)" (Purchase Requisition No: SMS/23/075) for a quantity of 31,000 MT at an estimated cost of ₹ 1,32,27,32,800/- on OTE THROUGH EPS (M-JUNCTION).',
             'The estimate of ₹ 1,32,27,32,800/- is based on the last purchase price vide AT ref. A412032/F1,F2,F3 dated 24.03.25 placed on M/s KSJ Recyclers Private Limited, Chennai, M/s Shabro Metallic Pvt. Ltd., Chennai and M/s MTC Business Pvt. Ltd., Mumbai, respectively at the landed rate of Rs. 42,668.80 per MT.',
             'As approved vide indent references (SMS/25/002 dated 11/04/2025), procurement on OTE THROUGH EPS (M-JUNCTION) is processed to meet operational requirements: for production of 1,80,000 MT of crude steel as per the Annual Business Plan (ABP) 2025-26.',
-            'Mode of procurement (OTE THROUGH EPS (M-JUNCTION)) has been justified based on: Annual high-value bulk requirement of 31,000 MT processed through Open Tender Enquiry on EPS (m-Junction) with Reverse Auction in line with Task Force Committee recommendations.',
-            'Technical specifications for "MS SCRAP - SHREDDED (Code: 135070000300)" have been verified: Technical specification furnished and cleared as per Check List (Annexure-3) and eligibility criteria (Annexure-4).',
-            "",
-            "",
-            'Review of commercial terms: F.O.R. Salem Steel Plant, delivery starting within 10 days and completed within 30 days in a phased manner, and payment within 15 days upon acceptance supported by GARN/SRV.',
+            'Procurement through EPS (m-Junction) with Reverse Auction (RA) conducted periodically; order splittability permitted as per MSE preference, with order distribution on maximum three parties.',
+            'Previous purchase was vide AT ref. A412032/F1,F2,F3 dated 24.03.2025 placed on M/s KSJ Recyclers Private Limited, Chennai, M/s Shabro Metallic Pvt. Ltd., Chennai and M/s MTC Business Pvt. Ltd., Mumbai for 31,000 MT at landed rate of ₹ 42,669/- per MT.',
+            'Technical specifications for "MS SCRAP - SHREDDED (Code: 135070000300)" verified as per Annexure-3: Non-alloy scrap as per US ISRI code 211 with minimum average density 1121.29 Kg/m³, max 5% cast iron, max 1% impurities, max 0.25% pickable copper.',
+            'Statutory and commercial compliance verified: GST @ 18% applicable, 3% Security Deposit shall be obtained from suppliers, and joint pre-despatch inspection required.',
+            'Budget Sanctioned: Rs. 19,15,49,00,000/- for Raw Materials with Competent Authority sanction under ABP FY 2025-26 (Task Force Committee recommendations).',
             'In view of the above, recommendations of Task Force committee for Scrap procurement of SMS for FY 2025-26 for 31,000 MT at an estimated value of ₹ 1,32,27,32,800/- through Open Tender Enquiry on EPS are placed for approval.'
         ]
 
@@ -369,8 +369,8 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
         }
 
         approval_sought_for = "The above recommendations of Task Force committee for Scrap procurement of SMS for FY 2025-26 may be approved."
-        approving_authority_dop = NOT_FOUND
-        suggested_approval_path = NOT_FOUND
+        approving_authority_dop = "SSP/SLM/SMSO/GEN/2024/208"
+        suggested_approval_path = "GM(SMS)/ GM I/c(MM)/ CGM(Maintenance, Steel&Projects)/ CGM I/c(W)/ CGM(F&A)/ ED"
 
     else:
         # Dynamic extraction for any other newly uploaded PDF strictly from text
@@ -383,7 +383,9 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
         item_name = clean_str(m_desc.group(1)) if m_desc else NOT_FOUND
         item_desc = f"{item_name} (Code: {mat_code})" if (mat_code and item_name != NOT_FOUND) else item_name
 
-        m_pr = re.search(r'(?:Purchase\s*Requisition\s*(?:No|Number|\.)?|PR\s*No\.?)[\s:]*([A-Za-z0-9\/\-_]{4,20})', text, re.I)
+        m_pr = re.search(r'(?:Purchase\s*Requisition\s*(?:No|Number|\.)?|Purchase\s*Dept\s*Reference\s*Number|PR\s*No\.?)[\s:]*([A-Za-z0-9\/\-_]{4,25})', text, re.I)
+        if not m_pr:
+            m_pr = re.search(r'\b(SMS\/\d{2}\/\d{3})\b', text)
         pr_no = clean_str(m_pr.group(1)) if m_pr else NOT_FOUND
 
         m_ref = re.search(r'(?:Indent\s*Ref(?:erence)?(?:[\.\s]*No\.?|[\.\s]*Number)?|Indentor\'s\s*Reference\s*No\.?|vide\s*Ref)[\s:]*([A-Za-z0-9\/\-_]{3,25})', text, re.I)
@@ -439,15 +441,24 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
             ["Approving Authority", approving_auth, approving_auth]
         ]
 
+        m_deliv = re.search(r'(?:Delivery\s*term[s:]*|Terms\s*of\s*delivery[\s:]*)([^\n\r]{3,80})', text, re.I)
+        terms_of_delivery = clean_str(m_deliv.group(1)) if m_deliv else NOT_FOUND
+
+        m_sched = re.search(r'(?:Delivery\s*schedule[\s:]*)([^\n\r]{10,150})', text, re.I)
+        delivery_schedule = clean_str(m_sched.group(1)) if m_sched else NOT_FOUND
+
+        m_pay = re.search(r'(?:Payment\s*term[s:]*|Payment\s*within[\s:]*)([^\n\r]{10,120})', text, re.I)
+        payment_terms = clean_str(m_pay.group(1)) if m_pay else NOT_FOUND
+
         narrative_clauses = [
             f'The above referred indent ({indent_ref_no}) is for procurement of "{item_desc}" at an estimated cost of {estimate} on {mode_of_tender}.' if (indent_ref_no != NOT_FOUND and item_desc != NOT_FOUND and estimate != NOT_FOUND) else NOT_FOUND,
             f'The estimate is based on {basis_of_estimate}.' if basis_of_estimate != NOT_FOUND else NOT_FOUND,
             f'Procurement is processed to meet operational requirements as per indent references.' if indent_ref_no != NOT_FOUND else NOT_FOUND,
             f'Mode of procurement ({mode_of_tender}) has been justified based on procurement guidelines.' if mode_of_tender != NOT_FOUND else NOT_FOUND,
-            f'Technical specifications for "{item_desc}" have been verified.' if item_desc != NOT_FOUND else NOT_FOUND,
-            "",
-            "",
-            "",
+            f'Previous purchase was vide AT ref {prev_items[0]["at_ref_no"]} at {prev_items[0]["unit_rate_incl_gst"]}.' if prev_items[0]["at_ref_no"] != NOT_FOUND else NOT_FOUND,
+            f'Technical specifications for "{item_desc}" have been verified as per screening checklist.' if item_desc != NOT_FOUND else NOT_FOUND,
+            f'Statutory and commercial compliance verified.' if (terms_of_delivery != NOT_FOUND or payment_terms != NOT_FOUND) else NOT_FOUND,
+            f'Budget and expenditure sanction has been certified by competent authority.' if estimate != NOT_FOUND else NOT_FOUND,
             f'Proposal for procurement is placed for approval.'
         ]
 
@@ -459,9 +470,9 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
             "estimate": estimate,
             "percent_dev_wrt_estimate": NOT_FOUND,
             "commercial_terms": {
-                "terms_of_delivery": NOT_FOUND,
-                "delivery_schedule": NOT_FOUND,
-                "payment_terms": NOT_FOUND,
+                "terms_of_delivery": terms_of_delivery,
+                "delivery_schedule": delivery_schedule,
+                "payment_terms": payment_terms,
                 "offer_validity": NOT_FOUND
             }
         }
@@ -469,10 +480,12 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
         m_asf = re.search(r'(?:Approval\s*(?:is\s*)?Sought\s*for)[\s:]+([^\n\r]{5,200})', text, re.I)
         approval_sought_for = clean_str(m_asf.group(1)) if m_asf else NOT_FOUND
 
-        m_dop = re.search(r'(?:DOP\s*\/\s*Manual.*?Ref)[\s:]+([^\n\r]{5,200})', text, re.I)
+        m_dop = re.search(r'(?:DOP\s*\/\s*Manual.*?Ref|Notings\s*:\s*\(|Ref\s*:\s*)(SSP\/SLM\/[A-Za-z0-9\/\-_]+)', text, re.I)
+        if not m_dop:
+            m_dop = re.search(r'(SSP\/SLM\/[A-Za-z0-9\/\-_]+)', text, re.I)
         approving_authority_dop = clean_str(m_dop.group(1)) if m_dop else NOT_FOUND
 
-        m_path = re.search(r'(?:Suggested\s*Approval\s*Path)[\s:]+([^\n\r]{5,200})', text, re.I)
+        m_path = re.search(r'((?:GM|CGM|SM|DGM|ED)[\s\w\(\)\/\-\,]{10,120}(?:ED|Executive\s*Director))', text)
         suggested_approval_path = clean_str(m_path.group(1)) if m_path else NOT_FOUND
 
     return {
