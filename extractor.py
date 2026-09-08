@@ -123,7 +123,7 @@ def clean_ocr_artifacts(text: str) -> str:
     t = re.sub(r'\s+\d+\s+Jo[0-9A-Za-z]+.*$', '', t, flags=re.I)
     return clean_str(t)
 
-NOT_FOUND = "Not found in source document"
+NOT_FOUND = ""
 
 def format_inr(val_str: str) -> str:
     if not val_str or val_str == NOT_FOUND:
@@ -209,9 +209,9 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
             'As approved vide indent references (SMSE/27/04 dated 08.07.2026), procurement on Single Tender Proprietary through GeM is processed to meet operational requirements: In AOD Converter, 4 numbers of tuyeres are installed for blowing of gases (Oxygen: Ar/N2) in converter where inert gas flow is controlled using COAX motorized control valve in closed loop through PLC, critical for converter life and tuyere cooling.',
             'Mode of procurement (Single Tender Proprietary through GeM) has been justified based on: Proprietary item manufactured exclusively by M/s COAX Germany and supplied through authorized distributor M/s Omkar Supranational Pvt. Ltd.; no other make or model is acceptable due to existing actuator, electrical and mechanical characteristics and dimensional compatibility.',
             'Technical specifications for "SMS COAX VALVE ACTUATOR AOD V/STND (Code: 735021002101)" have been verified: Specification for the materials indented has been furnished and screened as per Indent Screening Checklist approved by competent authority.',
-            f'Techno-commercial compliance: {NOT_FOUND}',
-            f'Price evaluation: {NOT_FOUND}',
-            f'Review of commercial terms: {NOT_FOUND}',
+            "",
+            "",
+            "",
             'In view of the above, proposal for procurement of "SMS COAX VALVE ACTUATOR AOD V/STND (Code: 735021002101)" on M/s Omkar Supranational Pvt. Ltd. at an estimated cost of ₹ 9,50,490/- on Single Tender Proprietary through GeM is placed for approval.'
         ]
 
@@ -277,9 +277,9 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
             'The estimate is based on LPP at Rs.36,160/- PMT (excluding GST) vide PO dated: 24/03/2025.',
             'SMS Operation recommended to conduct price discovery for 4000 MT towards first phase of price discovery through EPS to meet production requirements.',
             'Mode of procurement has been justified: To issue an Open Tender enquiry (Two Stage) through EPS with monthly price discovery cycles.',
-            f'Technical specifications verification: {NOT_FOUND}',
-            f'Techno-commercial compliance: {NOT_FOUND}',
-            f'Price evaluation: {NOT_FOUND}',
+            "",
+            "",
+            "",
             'Review of commercial terms: Delivery period one month (staggered delivery), payment term 100% payment within 15 days from the date of acceptance supported by GARN/SRV and 3rd party certificate, and 3% Security Deposit.',
             'In view of the above, approval of Chief Executive is sought for issue of Open Tender Enquiry as proposed above.'
         ]
@@ -347,8 +347,8 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
             'As approved vide indent references (SMS/25/002 dated 11/04/2025), procurement on OTE THROUGH EPS (M-JUNCTION) is processed to meet operational requirements: for production of 1,80,000 MT of crude steel as per the Annual Business Plan (ABP) 2025-26.',
             'Mode of procurement (OTE THROUGH EPS (M-JUNCTION)) has been justified based on: Annual high-value bulk requirement of 31,000 MT processed through Open Tender Enquiry on EPS (m-Junction) with Reverse Auction in line with Task Force Committee recommendations.',
             'Technical specifications for "MS SCRAP - SHREDDED (Code: 135070000300)" have been verified: Technical specification furnished and cleared as per Check List (Annexure-3) and eligibility criteria (Annexure-4).',
-            f'Techno-commercial compliance: {NOT_FOUND}',
-            f'Price evaluation: {NOT_FOUND}',
+            "",
+            "",
             'Review of commercial terms: F.O.R. Salem Steel Plant, delivery starting within 10 days and completed within 30 days in a phased manner, and payment within 15 days upon acceptance supported by GARN/SRV.',
             'In view of the above, recommendations of Task Force committee for Scrap procurement of SMS for FY 2025-26 for 31,000 MT at an estimated value of ₹ 1,32,27,32,800/- through Open Tender Enquiry on EPS are placed for approval.'
         ]
@@ -445,9 +445,9 @@ def parse_purchase_requisition(text: str, filename: str = '') -> dict:
             f'Procurement is processed to meet operational requirements as per indent references.' if indent_ref_no != NOT_FOUND else NOT_FOUND,
             f'Mode of procurement ({mode_of_tender}) has been justified based on procurement guidelines.' if mode_of_tender != NOT_FOUND else NOT_FOUND,
             f'Technical specifications for "{item_desc}" have been verified.' if item_desc != NOT_FOUND else NOT_FOUND,
-            f'Techno-commercial compliance: {NOT_FOUND}',
-            f'Price evaluation: {NOT_FOUND}',
-            f'Review of commercial terms: {NOT_FOUND}',
+            "",
+            "",
+            "",
             f'Proposal for procurement is placed for approval.'
         ]
 
