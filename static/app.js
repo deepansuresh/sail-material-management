@@ -215,15 +215,15 @@ function renderProposal(data) {
 
     // Indent Particulars
     const ind = data.indent_particulars || {};
-    document.getElementById('valPRNo').innerText = ind.purchase_requisition_no || '-';
-    document.getElementById('valIndentRefNo').innerText = ind.indent_reference_no || '-';
-    document.getElementById('valIndentDate').innerText = ind.indent_date || '-';
-    document.getElementById('valProposalDate').innerText = ind.proposal_date || '-';
-    document.getElementById('valIndentRaisedBy').innerText = ind.indent_raised_by || '-';
-    document.getElementById('valEstimate').innerText = ind.estimate || '-';
-    document.getElementById('valBasisEstimate').innerText = ind.basis_of_estimate || '-';
-    document.getElementById('valFirstTime').innerText = ind.first_time_procurement || '-';
-    document.getElementById('valBudgetaryOffers').innerText = ind.budgetary_offers_count || '-';
+    document.getElementById('valPRNo').innerText = ind.purchase_requisition_no || '';
+    document.getElementById('valIndentRefNo').innerText = ind.indent_reference_no || '';
+    document.getElementById('valIndentDate').innerText = ind.indent_date || '';
+    document.getElementById('valProposalDate').innerText = ind.proposal_date || '';
+    document.getElementById('valIndentRaisedBy').innerText = ind.indent_raised_by || '';
+    document.getElementById('valEstimate').innerText = ind.estimate || '';
+    document.getElementById('valBasisEstimate').innerText = ind.basis_of_estimate || '';
+    document.getElementById('valFirstTime').innerText = ind.first_time_procurement || '';
+    document.getElementById('valBudgetaryOffers').innerText = ind.budgetary_offers_count || '';
 
     // Previous Purchase Details
     const prev = data.previous_purchase_details || {};
@@ -239,19 +239,19 @@ function renderProposal(data) {
         `;
         prevBody.appendChild(tr);
     });
-    document.getElementById('valPrevMode').innerText = prev.prev_mode_of_tender || '-';
+    document.getElementById('valPrevMode').innerText = prev.prev_mode_of_tender || '';
 
     // Indent Approval
     const ia = data.indent_approval || {};
-    document.getElementById('valApprovingAuth').innerText = ia.approving_authority || '-';
-    document.getElementById('valApprovedDate').innerText = ia.indent_approved_date || '-';
-    document.getElementById('valModeTender').innerText = ia.mode_of_tender || '-';
+    document.getElementById('valApprovingAuth').innerText = ia.approving_authority || '';
+    document.getElementById('valApprovedDate').innerText = ia.indent_approved_date || '';
+    document.getElementById('valModeTender').innerText = ia.mode_of_tender || '';
 
     // Sanction Particulars
     const sp = data.sanction_particulars || {};
-    document.getElementById('valSupplierName').innerText = sp.supplier_name || '-';
-    document.getElementById('valOrderValue').innerText = sp.order_value_incl_gst || '-';
-    document.getElementById('valDevWrtEstimate').innerText = sp.deviation_wrt_estimate || '-';
+    document.getElementById('valSupplierName').innerText = sp.supplier_name || '';
+    document.getElementById('valOrderValue').innerText = sp.order_value_incl_gst || '';
+    document.getElementById('valDevWrtEstimate').innerText = sp.deviation_wrt_estimate || '';
 
     // Negotiation Details
     const neg = data.negotiation_details || {};
@@ -283,23 +283,23 @@ function renderProposal(data) {
 
     // Proposed Order Terms
     const pot = data.proposed_order_terms || {};
-    document.getElementById('termSupplier').innerText = pot.supplier_name || '-';
-    document.getElementById('termItem').innerText = pot.item_description || '-';
-    document.getElementById('termValNoGST').innerText = pot.total_order_value_without_gst || '-';
-    document.getElementById('termValWithGST').innerText = pot.total_order_value_with_gst || '-';
-    document.getElementById('termEstimate').innerText = pot.estimate || '-';
-    document.getElementById('termDev').innerText = pot.percent_dev_wrt_estimate || '-';
+    document.getElementById('termSupplier').innerText = pot.supplier_name || '';
+    document.getElementById('termItem').innerText = pot.item_description || '';
+    document.getElementById('termValNoGST').innerText = pot.total_order_value_without_gst || '';
+    document.getElementById('termValWithGST').innerText = pot.total_order_value_with_gst || '';
+    document.getElementById('termEstimate').innerText = pot.estimate || '';
+    document.getElementById('termDev').innerText = pot.percent_dev_wrt_estimate || '';
 
     const ct = pot.commercial_terms || {};
-    document.getElementById('termDelivery').innerText = ct.terms_of_delivery || '-';
-    document.getElementById('termSchedule').innerText = ct.delivery_schedule || '-';
-    document.getElementById('termPayment').innerText = ct.payment_terms || '-';
-    document.getElementById('termValidity').innerText = ct.offer_validity || '-';
+    document.getElementById('termDelivery').innerText = ct.terms_of_delivery || '';
+    document.getElementById('termSchedule').innerText = ct.delivery_schedule || '';
+    document.getElementById('termPayment').innerText = ct.payment_terms || '';
+    document.getElementById('termValidity').innerText = ct.offer_validity || '';
 
     // Approval Blocks
-    document.getElementById('blockApprovalSought').innerText = data.approval_sought_for || '-';
-    document.getElementById('blockApprovingDop').innerText = data.approving_authority_dop || '-';
-    document.getElementById('blockApprovalPath').innerText = data.suggested_approval_path || '-';
+    document.getElementById('blockApprovalSought').innerText = data.approval_sought_for || '';
+    document.getElementById('blockApprovingDop').innerText = data.approving_authority_dop || '';
+    document.getElementById('blockApprovalPath').innerText = data.suggested_approval_path || '';
 
     // Update Sidebar
     document.getElementById('reportGeneratedText').innerText = 'Proposal Note Ready';
