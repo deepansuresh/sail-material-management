@@ -57,7 +57,7 @@ async def serve_index():
         return HTMLResponse(content=f.read())
 
 
-BUILD_VERSION = "2026.09.08.v10-zero-missing-answers"
+BUILD_VERSION = "2026.09.08.v11-strict-source-traceability"
 
 @app.get("/api/health")
 def health_check():
