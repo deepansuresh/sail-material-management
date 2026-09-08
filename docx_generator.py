@@ -177,7 +177,13 @@ def generate_purchase_proposal_docx(data: dict, output_path: str):
 
     doc.add_paragraph().paragraph_format.space_after = Pt(10)
 
-    # Narrative Clauses 1 to 9 (Matching Screenshot 3 & 4)
+    # Narrative Clauses 1–9
+    p_nc = doc.add_paragraph()
+    r_nc = p_nc.add_run("Narrative Clauses 1–9")
+    r_nc.bold = True
+    r_nc.font.size = Pt(11)
+    p_nc.paragraph_format.space_after = Pt(4)
+
     for i, clause in enumerate(data.get("narrative_clauses", []), 1):
         p_c = doc.add_paragraph()
         p_c.paragraph_format.space_after = Pt(6)
@@ -185,11 +191,11 @@ def generate_purchase_proposal_docx(data: dict, output_path: str):
         
         # Check if clause already starts with number
         prefix = f"{i}. " if not clause.strip().startswith(str(i)) else ""
-        run = p_c.add_run(prefix + clause)
+        run = p_c.add_run(prefix + clause if clause.strip() else f"{i}. ")
 
     doc.add_paragraph().paragraph_format.space_after = Pt(6)
 
-    # Proposed Order Terms Table (Screenshot 4)
+    # Proposed Order Terms Table
     pot = data.get("proposed_order_terms", {})
     tbl_terms = doc.add_table(rows=0, cols=2)
     tbl_terms.alignment = WD_TABLE_ALIGNMENT.CENTER
@@ -207,7 +213,7 @@ def generate_purchase_proposal_docx(data: dict, output_path: str):
         add_key_value(tbl_terms, k, v)
 
     # Commercial Terms sub-section
-    add_section_header(tbl_terms, "Commercial Terms:")
+    add_section_header(tbl_terms, "Commercial Terms")
     ct = pot.get("commercial_terms", {})
     add_key_value(tbl_terms, "Terms of Delivery", ct.get("terms_of_delivery", ""))
     add_key_value(tbl_terms, "Delivery Schedule", ct.get("delivery_schedule", ""))
@@ -215,6 +221,13 @@ def generate_purchase_proposal_docx(data: dict, output_path: str):
     add_key_value(tbl_terms, "Offer Validity", ct.get("offer_validity", ""))
 
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
+
+    # Approval Section
+    p_app = doc.add_paragraph()
+    r_app = p_app.add_run("Approval Section")
+    r_app.bold = True
+    r_app.font.size = Pt(12)
+    p_app.paragraph_format.space_after = Pt(6)
 
     # Approval Sought For
     p_as = doc.add_paragraph()
