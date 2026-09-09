@@ -14,8 +14,9 @@ MASTER_TEMPLATE_DOCX = (
 
 FORBIDDEN_WORDS = [
     "not found", "not available", "not applicable", "n/a", "na",
-    "unknown", "nil", "none", "no data", "unavailable", "cannot determine",
-    "blank", "-", "—", "*"
+    "unknown", "unavailable", "nil", "none", "no data", "cannot determine",
+    "blank", "-", "—", "*", "auto", "automatically", "placeholder",
+    "tbd", "to be updated", "to be filled"
 ]
 
 CONCATENATED_HEADER_PATTERNS = [
@@ -31,7 +32,10 @@ DISALLOWED_EXTRA_SECTIONS = [
     "Walkthrough",
     "Debug Information",
     "Developer Notes",
-    "AI Explanation"
+    "AI Explanation",
+    "Extraction Notes",
+    "Internal JSON",
+    "Internal validation report"
 ]
 
 
@@ -181,6 +185,17 @@ def validate_generated_docx(docx_path: str):
 
     saved_doc = docx.Document(docx_path)
     errors = []
+
+    # 0. Master Template Structure Check (MASTER TEMPLATE STRUCTURE CHANGES = 0)
+    if len(saved_doc.tables) != 3:
+        errors.append(f"Master template table count mismatch: expected 3, got {len(saved_doc.tables)}")
+    else:
+        if len(saved_doc.tables[0].rows) != 27:
+            errors.append(f"Table 0 row count mismatch: expected 27, got {len(saved_doc.tables[0].rows)}")
+        if len(saved_doc.tables[1].rows) != 14:
+            errors.append(f"Table 1 row count mismatch: expected 14, got {len(saved_doc.tables[1].rows)}")
+        if len(saved_doc.tables[2].rows) != 5:
+            errors.append(f"Table 2 row count mismatch: expected 5, got {len(saved_doc.tables[2].rows)}")
 
     # 1. Extra Sections Check
     for p_idx, p in enumerate(saved_doc.paragraphs):
