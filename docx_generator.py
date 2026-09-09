@@ -1,277 +1,178 @@
+import os
 import docx
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.oxml import OxmlElement, parse_xml
-from docx.oxml.ns import nsdecls, qn
 
-def set_cell_background(cell, fill_hex):
-    tcPr = cell._tc.get_or_add_tcPr()
-    shd = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{fill_hex}"/>')
-    tcPr.append(shd)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MASTER_TEMPLATE_DOCX = os.path.join(BASE_DIR, "test_proposal.docx")
 
-def set_cell_margins(cell, top=100, bottom=100, left=150, right=150):
-    tcPr = cell._tc.get_or_add_tcPr()
-    tcMar = parse_xml(f'<w:tcMar {nsdecls("w")}><w:top w:w="{top}" w:type="dxa"/><w:bottom w:w="{bottom}" w:type="dxa"/><w:left w:w="{left}" w:type="dxa"/><w:right w:w="{right}" w:type="dxa"/></w:tcMar>')
-    tcPr.append(tcMar)
-
-def set_table_borders(table, color="CCCCCC", sz="4"):
-    tblPr = table._tbl.tblPr
-    borders = parse_xml(
-        f'<w:tblBorders {nsdecls("w")}>'
-        f'<w:top w:val="single" w:sz="{sz}" w:space="0" w:color="{color}"/>'
-        f'<w:left w:val="single" w:sz="{sz}" w:space="0" w:color="{color}"/>'
-        f'<w:bottom w:val="single" w:sz="{sz}" w:space="0" w:color="{color}"/>'
-        f'<w:right w:val="single" w:sz="{sz}" w:space="0" w:color="{color}"/>'
-        f'<w:insideH w:val="single" w:sz="{sz}" w:space="0" w:color="{color}"/>'
-        f'<w:insideV w:val="single" w:sz="{sz}" w:space="0" w:color="{color}"/>'
-        f'</w:tblBorders>'
-    )
-    tblPr.append(borders)
+FORBIDDEN_WORDS = [
+    "not found", "not available", "not applicable", "n/a", "na",
+    "unknown", "nil", "none", "no data", "unavailable", "cannot determine",
+    "-", "—", "*"
+]
 
 def generate_purchase_proposal_docx(data: dict, output_path: str):
-    doc = docx.Document()
+    """
+    Populates the IMMUTABLE MASTER TEMPLATE DOCX (test_proposal.docx).
+    Preserves all original tables, cells, widths, borders, styling, and page breaks.
+    Never creates tables from scratch, never concatenates headers into 'ParameterValue'.
+    Validates that every single value cell contains real source-supported data.
+    """
+    if not os.path.exists(MASTER_TEMPLATE_DOCX):
+        raise FileNotFoundError(f"Master template DOCX not found at {MASTER_TEMPLATE_DOCX}")
+
+    doc = docx.Document(MASTER_TEMPLATE_DOCX)
     
-    # Page Margins
-    for section in doc.sections:
-        section.top_margin = Inches(0.7)
-        section.bottom_margin = Inches(0.7)
-        section.left_margin = Inches(0.7)
-        section.right_margin = Inches(0.7)
-
-    # Style defaults
-    style = doc.styles['Normal']
-    font = style.font
-    font.name = 'Calibri'
-    font.size = Pt(10.5)
-    font.color.rgb = RGBColor(30, 41, 59)
-
-    # Title / Header
-    p_title = doc.add_paragraph()
-    r_title = p_title.add_run("PURCHASE PROPOSAL NOTE")
-    r_title.bold = True
-    r_title.font.size = Pt(15)
-    r_title.font.color.rgb = RGBColor(15, 23, 42)
-    p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-    p_sub = doc.add_paragraph()
-    r_sub = p_sub.add_run("STEEL AUTHORITY OF INDIA LIMITED - SALEM STEEL PLANT")
-    r_sub.bold = True
-    r_sub.font.size = Pt(11)
-    r_sub.font.color.rgb = RGBColor(71, 85, 105)
-    p_sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_paragraph().paragraph_format.space_after = Pt(6)
-
-    # Main Indent Particulars Table (Matching Screenshot 2 & 3)
-    table = doc.add_table(rows=1, cols=2)
-    table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    set_table_borders(table)
-
-    # Header Row: Description of the item
-    row0 = table.rows[0]
-    cell_top = row0.cells[0]
-    row0.cells[0].merge(row0.cells[1])
-    p = cell_top.paragraphs[0]
-    p.paragraph_format.space_before = Pt(3)
-    p.paragraph_format.space_after = Pt(3)
-    run_bold = p.add_run(f"Description of the item: {data.get('item_description', '')}")
-    run_bold.bold = True
-    set_cell_background(cell_top, "F1F5F9")
-
-    def add_section_header(tbl, title):
-        r = tbl.add_row()
-        c = r.cells[0]
-        r.cells[0].merge(r.cells[1])
-        p = c.paragraphs[0]
-        p.paragraph_format.space_before = Pt(3)
-        p.paragraph_format.space_after = Pt(3)
-        run = p.add_run(title)
-        run.bold = True
-        set_cell_background(c, "E2E8F0")
-
-    def add_param_value_header(tbl):
-        r = tbl.add_row()
-        c1, c2 = r.cells[0], r.cells[1]
-        p1 = c1.paragraphs[0]
-        p1.paragraph_format.space_before = Pt(2)
-        p1.paragraph_format.space_after = Pt(2)
-        r1 = p1.add_run("Parameter")
-        r1.bold = True
-        p2 = c2.paragraphs[0]
-        p2.paragraph_format.space_before = Pt(2)
-        p2.paragraph_format.space_after = Pt(2)
-        r2 = p2.add_run("Value")
-        r2.bold = True
-        c1.width = Inches(2.8)
-        c2.width = Inches(4.3)
-        set_cell_background(c1, "EDF2F7")
-        set_cell_background(c2, "EDF2F7")
-
-    def add_key_value(tbl, k, v):
-        r = tbl.add_row()
-        c1, c2 = r.cells[0], r.cells[1]
-        c1.paragraphs[0].add_run(k).bold = True
-        c2.paragraphs[0].add_run(str(v))
-        c1.width = Inches(2.8)
-        c2.width = Inches(4.3)
-        set_cell_background(c1, "F8FAFC")
-
-    # Indent Particulars
-    add_section_header(table, "Indent Particulars")
-    add_param_value_header(table)
+    # -------------------------------------------------------------
+    # 1. Main Table (Table 0: Indent Particulars, Previous Purchase, Indent Approval, Sanction, Negotiation)
+    # -------------------------------------------------------------
+    t0 = doc.tables[0]
+    
+    # Row 0: Description of the item
+    item_desc = str(data.get("item_description", "")).strip()
+    t0.rows[0].cells[0].paragraphs[0].text = f"Description of the item: {item_desc}"
+    
     ind = data.get("indent_particulars", {})
-    add_key_value(table, "Purchase requisition no.", ind.get("purchase_requisition_no", ""))
-    add_key_value(table, "Indent reference no.", ind.get("indent_reference_no", ""))
-    add_key_value(table, "Indent date", ind.get("indent_date", ""))
-    add_key_value(table, "Proposal date", ind.get("proposal_date", ""))
-    add_key_value(table, "Indent raised by", ind.get("indent_raised_by", ""))
-    add_key_value(table, "Estimate", ind.get("estimate", ""))
-    add_key_value(table, "Basis of estimate", ind.get("basis_of_estimate", ""))
-    add_key_value(table, "First time procurement", ind.get("first_time_procurement", ""))
-    add_key_value(table, "Number of budgetary offers received", ind.get("budgetary_offers_count", ""))
-
-    # Previous purchase details
-    add_section_header(table, "Previous purchase details:")
     prev = data.get("previous_purchase_details", {})
-    
-    # Nested table or rows for previous purchases
-    r_prev = table.add_row()
-    c_prev = r_prev.cells[0]
-    r_prev.cells[0].merge(r_prev.cells[1])
-    p_p = c_prev.paragraphs[0]
-    
-    # Add embedded sub-table
-    sub_tbl = c_prev.add_table(rows=1, cols=4)
-    set_table_borders(sub_tbl, "CBD5E1")
-    headers = ["Item sl. nos.", "AT ref. no.", "Previous purchase qty", "Unit rate incl. GST"]
-    for i, h in enumerate(headers):
-        cell = sub_tbl.rows[0].cells[i]
-        cell.paragraphs[0].add_run(h).bold = True
-        set_cell_background(cell, "F1F5F9")
-    
-    for itm in prev.get("items", []):
-        r_sub = sub_tbl.add_row()
-        r_sub.cells[0].paragraphs[0].add_run(str(itm.get("item_sl_no", "")))
-        r_sub.cells[1].paragraphs[0].add_run(str(itm.get("at_ref_no", "")))
-        r_sub.cells[2].paragraphs[0].add_run(str(itm.get("prev_qty", "")))
-        r_sub.cells[3].paragraphs[0].add_run(str(itm.get("unit_rate_incl_gst", "")))
-
-    add_key_value(table, "Previous purchase mode of tender", prev.get("prev_mode_of_tender", ""))
-
-    # Indent Approval
-    add_section_header(table, "Indent Approval")
-    add_param_value_header(table)
     ia = data.get("indent_approval", {})
-    add_key_value(table, "Approving Authority", ia.get("approving_authority", ""))
-    add_key_value(table, "Indent approved date", ia.get("indent_approved_date", ""))
-    add_key_value(table, "Mode of Tender", ia.get("mode_of_tender", ""))
-
-    # Sanction Particulars
-    add_section_header(table, "Sanction Particulars:")
-    add_param_value_header(table)
     sp = data.get("sanction_particulars", {})
-    add_key_value(table, "Name of the supplier", sp.get("supplier_name", ""))
-    add_key_value(table, "Order Value Incl. GST", sp.get("order_value_incl_gst", ""))
-    add_key_value(table, "Deviation wrt estimate", sp.get("deviation_wrt_estimate", ""))
-
-    # Negotiation Details
-    add_section_header(table, "Negotiation Details")
-    neg = data.get("negotiation_details", {})
-    
-    r_neg = table.add_row()
-    c_neg = r_neg.cells[0]
-    r_neg.cells[0].merge(r_neg.cells[1])
-    
-    neg_tbl = c_neg.add_table(rows=1, cols=3)
-    set_table_borders(neg_tbl, "CBD5E1")
-    n_headers = neg.get("headers", ["Parameter", "Tender Price", "After Negotiation"])
-    for i, h in enumerate(n_headers):
-        cell = neg_tbl.rows[0].cells[i]
-        cell.paragraphs[0].add_run(h).bold = True
-        set_cell_background(cell, "F1F5F9")
-        
-    for row in neg.get("rows", []):
-        r_n = neg_tbl.add_row()
-        r_n.cells[0].paragraphs[0].add_run(str(row[0])).bold = True
-        r_n.cells[1].paragraphs[0].add_run(str(row[1]))
-        r_n.cells[2].paragraphs[0].add_run(str(row[2]) if len(row) > 2 else "")
-
-    doc.add_paragraph().paragraph_format.space_after = Pt(10)
-
-    # Narrative Clauses 1–9
-    p_nc = doc.add_paragraph()
-    r_nc = p_nc.add_run("Narrative Clauses 1–9")
-    r_nc.bold = True
-    r_nc.font.size = Pt(11)
-    p_nc.paragraph_format.space_after = Pt(4)
-
-    for i, clause in enumerate(data.get("narrative_clauses", []), 1):
-        p_c = doc.add_paragraph()
-        p_c.paragraph_format.space_after = Pt(6)
-        p_c.paragraph_format.line_spacing = 1.15
-        
-        # Check if clause already starts with number
-        prefix = f"{i}. " if not clause.strip().startswith(str(i)) else ""
-        run = p_c.add_run(prefix + clause if clause.strip() else f"{i}. ")
-
-    doc.add_paragraph().paragraph_format.space_after = Pt(6)
-
-    # Proposed Order Terms Table
     pot = data.get("proposed_order_terms", {})
-    tbl_terms = doc.add_table(rows=0, cols=2)
-    tbl_terms.alignment = WD_TABLE_ALIGNMENT.CENTER
-    set_table_borders(tbl_terms)
-    add_section_header(tbl_terms, "Proposed Order Terms")
-    add_param_value_header(tbl_terms)
-
-    terms_kv = [
-        ("Supplier Name", pot.get("supplier_name", "")),
-        ("Item Description", pot.get("item_description", "")),
-        ("Total Order Value without GST", pot.get("total_order_value_without_gst", "")),
-        ("Total Order Value with GST", pot.get("total_order_value_with_gst", "")),
-        ("Estimate", pot.get("estimate", "")),
-        ("% Dev wrt estimate", pot.get("percent_dev_wrt_estimate", "")),
-    ]
-    for k, v in terms_kv:
-        add_key_value(tbl_terms, k, v)
-
-    # Commercial Terms sub-section
-    add_section_header(tbl_terms, "Commercial Terms")
-    add_param_value_header(tbl_terms)
     ct = pot.get("commercial_terms", {})
-    add_key_value(tbl_terms, "Terms of Delivery", ct.get("terms_of_delivery", ""))
-    add_key_value(tbl_terms, "Delivery Schedule", ct.get("delivery_schedule", ""))
-    add_key_value(tbl_terms, "Payment Terms", ct.get("payment_terms", ""))
-    add_key_value(tbl_terms, "Offer Validity", ct.get("offer_validity", ""))
+    
+    # Build complete key-to-value map for all two-column rows
+    field_map = {
+        "purchase requisition no.": ind.get("purchase_requisition_no", ""),
+        "indent reference no.": ind.get("indent_reference_no", ""),
+        "indent date": ind.get("indent_date", ""),
+        "proposal date": ind.get("proposal_date", ""),
+        "indent raised by": ind.get("indent_raised_by", ""),
+        "estimate": ind.get("estimate", ""),
+        "basis of estimate": ind.get("basis_of_estimate", ""),
+        "first time procurement": ind.get("first_time_procurement", ""),
+        "number of budgetary offers received": ind.get("budgetary_offers_count", ""),
+        "previous purchase mode of tender": prev.get("prev_mode_of_tender", ""),
+        "approving authority": ia.get("approving_authority", ""),
+        "indent approved date": ia.get("indent_approved_date", ""),
+        "mode of tender": ia.get("mode_of_tender", ""),
+        "name of the supplier": sp.get("supplier_name", ""),
+        "order value incl. gst": sp.get("order_value_incl_gst", ""),
+        "deviation wrt estimate": sp.get("deviation_wrt_estimate", ""),
+        "supplier name": pot.get("supplier_name", ""),
+        "item description": pot.get("item_description", ""),
+        "total order value without gst": pot.get("total_order_value_without_gst", ""),
+        "total order value with gst": pot.get("total_order_value_with_gst", ""),
+        "% dev wrt estimate": pot.get("percent_dev_wrt_estimate", ""),
+        "terms of delivery": ct.get("terms_of_delivery", ""),
+        "delivery schedule": ct.get("delivery_schedule", ""),
+        "payment terms": ct.get("payment_terms", ""),
+        "offer validity": ct.get("offer_validity", ""),
+        "approval sought for": data.get("approval_sought_for", ""),
+        "approving authority / dop / manual ref": data.get("approving_authority_dop", ""),
+        "suggested approval path": data.get("suggested_approval_path", "")
+    }
+    
+    # Update two-column key-value rows across all tables in the document
+    for tbl in doc.tables:
+        for row in tbl.rows:
+            if len(row.cells) == 2:
+                label = row.cells[0].text.strip().lower()
+                if label in field_map:
+                    val = str(field_map[label]).strip()
+                    row.cells[1].paragraphs[0].text = val
+                    
+    # Update Previous Purchase nested table (Row 13)
+    prev_items = prev.get("items", [])
+    if len(t0.rows) > 13 and len(t0.rows[13].cells[0].tables) > 0:
+        prev_tbl = t0.rows[13].cells[0].tables[0]
+        # Preserve header row (row 0), remove any extra old data rows
+        while len(prev_tbl.rows) > 1:
+            tr = prev_tbl.rows[-1]._tr
+            prev_tbl._tbl.remove(tr)
+            
+        for itm in prev_items:
+            nr = prev_tbl.add_row()
+            nr.cells[0].paragraphs[0].text = str(itm.get("item_sl_no", "")).strip()
+            nr.cells[1].paragraphs[0].text = str(itm.get("at_ref_no", "")).strip()
+            nr.cells[2].paragraphs[0].text = str(itm.get("prev_qty", "")).strip()
+            nr.cells[3].paragraphs[0].text = str(itm.get("unit_rate_incl_gst", "")).strip()
 
-    doc.add_paragraph().paragraph_format.space_after = Pt(12)
+    # Update Negotiation nested table (Row 26)
+    neg = data.get("negotiation_details", {})
+    neg_rows = neg.get("rows", [])
+    if len(t0.rows) > 26 and len(t0.rows[26].cells[0].tables) > 0:
+        neg_tbl = t0.rows[26].cells[0].tables[0]
+        for idx, r_data in enumerate(neg_rows, start=1):
+            if idx < len(neg_tbl.rows):
+                neg_tbl.rows[idx].cells[0].paragraphs[0].text = str(r_data[0]).strip()
+                neg_tbl.rows[idx].cells[1].paragraphs[0].text = str(r_data[1]).strip()
+                neg_tbl.rows[idx].cells[2].paragraphs[0].text = str(r_data[2]).strip()
 
-    # Approval Section
-    p_app = doc.add_paragraph()
-    r_app = p_app.add_run("Approval Section")
-    r_app.bold = True
-    r_app.font.size = Pt(12)
-    p_app.paragraph_format.space_after = Pt(6)
+    # -------------------------------------------------------------
+    # 2. Narrative Clauses 1–9 (Paragraphs 4 to 12)
+    # -------------------------------------------------------------
+    clauses = data.get("narrative_clauses", [])
+    clause_p_start = 4
+    for idx, c in enumerate(clauses):
+        p_idx = clause_p_start + idx
+        if p_idx < len(doc.paragraphs):
+            c_text = str(c).strip()
+            prefix = f"{idx + 1}. " if not c_text.startswith(str(idx + 1)) else ""
+            doc.paragraphs[p_idx].text = prefix + c_text
 
-    # Approval Sought For
-    p_as = doc.add_paragraph()
-    p_as.add_run("Approval Sought For").bold = True
-    p_as.paragraph_format.space_after = Pt(3)
-    p_as_text = doc.add_paragraph(data.get("approval_sought_for", ""))
-    p_as_text.paragraph_format.space_after = Pt(10)
+    # -------------------------------------------------------------
+    # 3. Strict Programmatic Validation Before Saving
+    # -------------------------------------------------------------
+    validation_errors = []
+    
+    # Verify Table Headers are separate
+    for t_idx, tbl in enumerate(doc.tables):
+        for r_idx, row in enumerate(tbl.rows):
+            # Check for header concatenation in single cells
+            for c_idx, cell in enumerate(row.cells):
+                txt = cell.text.strip()
+                if "ParameterValue" in txt:
+                    validation_errors.append(f"Concatenated ParameterValue found in Table {t_idx} Row {r_idx} Col {c_idx}")
+                if "ParameterTender" in txt:
+                    validation_errors.append(f"Concatenated ParameterTender found in Table {t_idx} Row {r_idx} Col {c_idx}")
+                for bad in FORBIDDEN_WORDS:
+                    if txt.lower() == bad:
+                        validation_errors.append(f"Forbidden placeholder '{bad}' found in Table {t_idx} Row {r_idx} Col {c_idx}")
+            
+            # Check for empty value cells in 2-column key-value rows
+            if len(row.cells) == 2:
+                c0_txt = row.cells[0].text.strip().lower()
+                c1_txt = row.cells[1].text.strip()
+                # Skip section headers (where both cells are merged or header rows)
+                if c0_txt != c1_txt.lower() and c0_txt not in ["parameter", "description of the item"]:
+                    if not c1_txt:
+                        validation_errors.append(f"Empty value cell for label '{row.cells[0].text.strip()}' in Table {t_idx} Row {r_idx}")
 
-    # Approving Authority / DOP / Manual Ref
-    p_dop = doc.add_paragraph()
-    p_dop.add_run("Approving Authority / DOP / Manual Ref").bold = True
-    p_dop.paragraph_format.space_after = Pt(3)
-    p_dop_text = doc.add_paragraph(data.get("approving_authority_dop", ""))
-    p_dop_text.paragraph_format.space_after = Pt(10)
+    # Verify nested previous purchase table
+    if len(t0.rows) > 13 and len(t0.rows[13].cells[0].tables) > 0:
+        prev_tbl = t0.rows[13].cells[0].tables[0]
+        prev_hdr = [c.text.strip() for c in prev_tbl.rows[0].cells]
+        if prev_hdr != ["Item sl. nos.", "AT ref. no.", "Previous purchase qty in nos./MT", "Unit rate incl. GST"]:
+            validation_errors.append(f"Previous Purchase Table header mismatch: {prev_hdr}")
+        for r_i, r in enumerate(prev_tbl.rows[1:], start=1):
+            for c_i, c in enumerate(r.cells):
+                if not c.text.strip():
+                    validation_errors.append(f"Empty cell in Previous Purchase Table Row {r_i} Col {c_i}")
 
-    # Suggested Approval Path
-    p_ap = doc.add_paragraph()
-    p_ap.add_run("Suggested Approval Path").bold = True
-    p_ap.paragraph_format.space_after = Pt(3)
-    p_ap_text = doc.add_paragraph(data.get("suggested_approval_path", ""))
-    p_ap_text.paragraph_format.space_after = Pt(14)
+    # Verify nested negotiation table
+    if len(t0.rows) > 26 and len(t0.rows[26].cells[0].tables) > 0:
+        neg_tbl = t0.rows[26].cells[0].tables[0]
+        neg_hdr = [c.text.strip() for c in neg_tbl.rows[0].cells]
+        if neg_hdr != ["Parameter", "Tender Price", "After Negotiation"]:
+            validation_errors.append(f"Negotiation Table header mismatch: {neg_hdr}")
+        for r_i, r in enumerate(neg_tbl.rows[1:], start=1):
+            for c_i, c in enumerate(r.cells):
+                if not c.text.strip():
+                    validation_errors.append(f"Empty cell in Negotiation Table Row {r_i} Col {c_i}")
+
+    if validation_errors:
+        raise ValueError(f"DOCX Generation Validation Failed:\n" + "\n".join(f"- {e}" for e in validation_errors))
 
     doc.save(output_path)
+    return output_path
