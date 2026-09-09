@@ -57,7 +57,7 @@ async def serve_index():
         return HTMLResponse(content=f.read())
 
 
-BUILD_VERSION = "2026.09.09.v19-immutable-template-dynamic-data"
+BUILD_VERSION = "2026.09.09.v20-immutable-template-verified-production"
 
 @app.get("/api/health")
 def health_check():
@@ -104,8 +104,8 @@ def analyze_pdf(file: UploadFile = File(...)):
         file_size_mb = os.path.getsize(tmp_path) / (1024 * 1024)
         print(f"[API] Saved upload to {tmp_path} ({file_size_mb:.2f} MB). Starting extraction...", flush=True)
 
-        # Extract freshly from the newly uploaded PDF with 75s budget (supports all 16 pages)
-        extracted_text = extractor.extract_text_from_pdf(tmp_path, max_pages=16, total_timeout_sec=75)
+        # Extract freshly from the newly uploaded PDF with 90s budget (supports up to 24 pages)
+        extracted_text = extractor.extract_text_from_pdf(tmp_path, max_pages=24, total_timeout_sec=90)
         print(f"[API] Extraction completed ({len(extracted_text)} chars). Parsing proposal data...", flush=True)
         
         # Parse into fixed structured proposal template
