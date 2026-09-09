@@ -89,6 +89,24 @@ def generate_purchase_proposal_docx(data: dict, output_path: str):
         run.bold = True
         set_cell_background(c, "E2E8F0")
 
+    def add_param_value_header(tbl):
+        r = tbl.add_row()
+        c1, c2 = r.cells[0], r.cells[1]
+        p1 = c1.paragraphs[0]
+        p1.paragraph_format.space_before = Pt(2)
+        p1.paragraph_format.space_after = Pt(2)
+        r1 = p1.add_run("Parameter")
+        r1.bold = True
+        p2 = c2.paragraphs[0]
+        p2.paragraph_format.space_before = Pt(2)
+        p2.paragraph_format.space_after = Pt(2)
+        r2 = p2.add_run("Value")
+        r2.bold = True
+        c1.width = Inches(2.8)
+        c2.width = Inches(4.3)
+        set_cell_background(c1, "EDF2F7")
+        set_cell_background(c2, "EDF2F7")
+
     def add_key_value(tbl, k, v):
         r = tbl.add_row()
         c1, c2 = r.cells[0], r.cells[1]
@@ -100,6 +118,7 @@ def generate_purchase_proposal_docx(data: dict, output_path: str):
 
     # Indent Particulars
     add_section_header(table, "Indent Particulars")
+    add_param_value_header(table)
     ind = data.get("indent_particulars", {})
     add_key_value(table, "Purchase requisition no.", ind.get("purchase_requisition_no", ""))
     add_key_value(table, "Indent reference no.", ind.get("indent_reference_no", ""))
@@ -141,6 +160,7 @@ def generate_purchase_proposal_docx(data: dict, output_path: str):
 
     # Indent Approval
     add_section_header(table, "Indent Approval")
+    add_param_value_header(table)
     ia = data.get("indent_approval", {})
     add_key_value(table, "Approving Authority", ia.get("approving_authority", ""))
     add_key_value(table, "Indent approved date", ia.get("indent_approved_date", ""))
@@ -148,6 +168,7 @@ def generate_purchase_proposal_docx(data: dict, output_path: str):
 
     # Sanction Particulars
     add_section_header(table, "Sanction Particulars:")
+    add_param_value_header(table)
     sp = data.get("sanction_particulars", {})
     add_key_value(table, "Name of the supplier", sp.get("supplier_name", ""))
     add_key_value(table, "Order Value Incl. GST", sp.get("order_value_incl_gst", ""))
@@ -200,6 +221,8 @@ def generate_purchase_proposal_docx(data: dict, output_path: str):
     tbl_terms = doc.add_table(rows=0, cols=2)
     tbl_terms.alignment = WD_TABLE_ALIGNMENT.CENTER
     set_table_borders(tbl_terms)
+    add_section_header(tbl_terms, "Proposed Order Terms")
+    add_param_value_header(tbl_terms)
 
     terms_kv = [
         ("Supplier Name", pot.get("supplier_name", "")),
@@ -214,6 +237,7 @@ def generate_purchase_proposal_docx(data: dict, output_path: str):
 
     # Commercial Terms sub-section
     add_section_header(tbl_terms, "Commercial Terms")
+    add_param_value_header(tbl_terms)
     ct = pot.get("commercial_terms", {})
     add_key_value(tbl_terms, "Terms of Delivery", ct.get("terms_of_delivery", ""))
     add_key_value(tbl_terms, "Delivery Schedule", ct.get("delivery_schedule", ""))
