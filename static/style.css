@@ -1,4 +1,4 @@
-﻿/* SAIL Material Management Theme */
+/* SAIL Material Management Theme */
 :root {
     --bg-main: #0B132B;
     --bg-card: #131F37;
@@ -439,6 +439,25 @@ body {
     font-size: 0.95rem;
     text-transform: uppercase;
     letter-spacing: 0.03em;
+}
+
+.table-sub-header th {
+    background-color: #162442;
+    color: #94A3B8;
+    font-weight: 600;
+    font-size: 0.85rem;
+    padding: 0.5rem 1rem;
+    border: 1px solid #233658;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.col-th-param {
+    width: 38%;
+}
+
+.col-th-val {
+    width: 62%;
 }
 
 .col-label {
