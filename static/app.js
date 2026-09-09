@@ -1,6 +1,53 @@
 // SAIL Material Management Module - Frontend Script
 let currentProposalData = null;
 
+// Safe DOM text setter: sets innerText only if element exists; supports fallback IDs
+function safeSetText(id, value, fallbackIds = []) {
+    let el = document.getElementById(id);
+    if (!el && fallbackIds && fallbackIds.length) {
+        for (const fbId of fallbackIds) {
+            el = document.getElementById(fbId);
+            if (el) break;
+        }
+    }
+    if (el) {
+        el.innerText = (value !== undefined && value !== null) ? String(value) : '';
+        return el;
+    } else {
+        console.warn(`[DOM] Element with id '${id}' not found in current DOM.`);
+        return null;
+    }
+}
+
+// Safe DOM HTML setter: sets innerHTML only if element exists; supports fallback IDs
+function safeSetHtml(id, htmlContent, fallbackIds = []) {
+    let el = document.getElementById(id);
+    if (!el && fallbackIds && fallbackIds.length) {
+        for (const fbId of fallbackIds) {
+            el = document.getElementById(fbId);
+            if (el) break;
+        }
+    }
+    if (el) {
+        el.innerHTML = (htmlContent !== undefined && htmlContent !== null) ? String(htmlContent) : '';
+        return el;
+    } else {
+        console.warn(`[DOM] Element with id '${id}' not found in current DOM.`);
+        return null;
+    }
+}
+
+// HTML escape helper to prevent injection in dynamic table rows
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('fileInput');
@@ -14,76 +61,93 @@ document.addEventListener('DOMContentLoaded', () => {
     const printBtn = document.getElementById('printBtn');
 
     // Select File trigger
-    selectBtn.addEventListener('click', () => fileInput.click());
+    if (selectBtn && fileInput) {
+        selectBtn.addEventListener('click', () => fileInput.click());
+    }
 
-    fileInput.addEventListener('change', (e) => {
-        if (e.target.files && e.target.files[0]) {
-            handleFileUpload(e.target.files[0]);
-        }
-    });
+    if (fileInput) {
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files[0]) {
+                handleFileUpload(e.target.files[0]);
+            }
+        });
+    }
 
     // Drag & drop
-    ['dragenter', 'dragover'].forEach(eventName => {
-        dropZone.addEventListener(eventName, (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            dropZone.classList.add('dragover');
+    if (dropZone) {
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropZone.classList.add('dragover');
+            });
         });
-    });
 
-    ['dragleave', 'drop'].forEach(eventName => {
-        dropZone.addEventListener(eventName, (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            dropZone.classList.remove('dragover');
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropZone.classList.remove('dragover');
+            });
         });
-    });
 
-    dropZone.addEventListener('drop', (e) => {
-        const dt = e.dataTransfer;
-        const files = dt.files;
-        if (files && files[0]) {
-            handleFileUpload(files[0]);
-        }
-    });
+        dropZone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const files = dt ? dt.files : null;
+            if (files && files[0]) {
+                handleFileUpload(files[0]);
+            }
+        });
+    }
 
     // Sample trigger
-    sampleBtn.addEventListener('click', () => {
-        loadSampleRequisition();
-    });
+    if (sampleBtn) {
+        sampleBtn.addEventListener('click', () => {
+            loadSampleRequisition();
+        });
+    }
 
     // Actions
-    newUploadBtn.addEventListener('click', () => {
-        currentProposalData = null;
-        outputCard.style.display = 'none';
-        uploadCard.style.display = 'flex';
-        dropZone.style.display = 'flex';
-        processingBox.style.display = 'none';
-        fileInput.value = '';
-    });
+    if (newUploadBtn) {
+        newUploadBtn.addEventListener('click', () => {
+            currentProposalData = null;
+            if (outputCard) outputCard.style.display = 'none';
+            if (uploadCard) uploadCard.style.display = 'flex';
+            if (dropZone) dropZone.style.display = 'flex';
+            if (processingBox) processingBox.style.display = 'none';
+            if (fileInput) fileInput.value = '';
+        });
+    }
 
-    downloadDocxBtn.addEventListener('click', () => {
-        if (!currentProposalData) return;
-        downloadWordDocument(currentProposalData);
-    });
+    if (downloadDocxBtn) {
+        downloadDocxBtn.addEventListener('click', () => {
+            if (!currentProposalData) return;
+            downloadWordDocument(currentProposalData);
+        });
+    }
 
-    printBtn.addEventListener('click', () => {
-        window.print();
-    });
+    if (printBtn) {
+        printBtn.addEventListener('click', () => {
+            window.print();
+        });
+    }
 });
 
 function handleFileUpload(file) {
+    if (!file || !file.name) return;
+
     if (!file.name.toLowerCase().endsWith('.pdf')) {
-        alert('Please select a valid PDF document.');
+        showUploadError('Please select a valid PDF document.');
         return;
     }
 
     if (file.size > 30 * 1024 * 1024) {
-        alert('File size exceeds maximum limit of 30 MB.');
+        showUploadError('File size exceeds maximum limit of 30 MB.');
         return;
     }
 
     currentProposalData = null;
+    clearUploadError();
     showProcessing('Preparing upload for ' + file.name + '...');
     updateSidebarActivity(file.name);
 
@@ -91,8 +155,6 @@ function handleFileUpload(file) {
     formData.append('file', file);
 
     const progressBar = document.getElementById('progressBar');
-    const processStatus = document.getElementById('processStatus');
-
     const xhr = new XMLHttpRequest();
     xhr.open('POST', '/api/analyze', true);
 
@@ -102,13 +164,11 @@ function handleFileUpload(file) {
             const loadedMB = (e.loaded / (1024 * 1024)).toFixed(1);
             const totalMB = (e.total / (1024 * 1024)).toFixed(1);
             if (progressBar) progressBar.style.width = `${Math.min(percent, 90)}%`;
-            if (processStatus) {
-                if (percent < 100) {
-                    processStatus.innerText = `Uploading Document: ${percent}% (${loadedMB} MB / ${totalMB} MB)...`;
-                } else {
-                    processStatus.innerText = 'Upload received. Extracting text & running OCR analysis...';
-                    if (progressBar) progressBar.style.width = '95%';
-                }
+            if (percent < 100) {
+                safeSetText('processStatus', `Uploading Document: ${percent}% (${loadedMB} MB / ${totalMB} MB)...`);
+            } else {
+                safeSetText('processStatus', 'Upload received. Extracting text & running OCR analysis...');
+                if (progressBar) progressBar.style.width = '95%';
             }
         }
     };
@@ -120,9 +180,8 @@ function handleFileUpload(file) {
                 if (progressBar) progressBar.style.width = '100%';
                 renderProposal(data);
             } catch (err) {
-                console.error(err);
-                alert('Error parsing server response: ' + err.message);
-                resetUploadUI();
+                console.error('[Client Error] Error rendering proposal:', err);
+                showUploadError('Failed to display document: ' + err.message);
             }
         } else {
             let detail = 'Server returned status ' + xhr.status;
@@ -130,22 +189,19 @@ function handleFileUpload(file) {
                 const errJson = JSON.parse(xhr.responseText);
                 if (errJson.detail) detail = errJson.detail;
             } catch (e) {}
-            console.error('Server error:', xhr.status, xhr.responseText);
-            alert('Analysis Error: ' + detail);
-            resetUploadUI();
+            console.error('[Server Error]', xhr.status, detail);
+            showUploadError(detail);
         }
     };
 
     xhr.onerror = () => {
-        console.error('XHR network error');
-        alert('Network connection error while uploading to server. Please check your connection.');
-        resetUploadUI();
+        console.error('[Network Error] XHR network connection error.');
+        showUploadError('Network connection error while uploading to server. Please check your connection.');
     };
 
     xhr.ontimeout = () => {
-        console.error('XHR timeout');
-        alert('Analysis request timed out after 3 minutes. Please try again.');
-        resetUploadUI();
+        console.error('[Timeout Error] XHR request timed out.');
+        showUploadError('Analysis request timed out after 3 minutes. Please try again.');
     };
 
     xhr.timeout = 180000; // 3 minutes timeout
@@ -154,6 +210,7 @@ function handleFileUpload(file) {
 
 function loadSampleRequisition() {
     currentProposalData = null;
+    clearUploadError();
     showProcessing('Analyzing Sample SAIL Purchase Requisition...');
     updateSidebarActivity('sample_indent.pdf (SAIL Indent)');
 
@@ -170,152 +227,205 @@ function loadSampleRequisition() {
                 if (progressBar) progressBar.style.width = '100%';
                 renderProposal(data);
             } catch (err) {
-                console.error(err);
-                alert('Error parsing sample data: ' + err.message);
-                resetUploadUI();
+                console.error('[Client Error] Error rendering sample:', err);
+                showUploadError('Failed to display sample data: ' + err.message);
             }
         } else {
-            alert('Error loading sample: Server returned status ' + xhr.status);
-            resetUploadUI();
+            let detail = 'Server returned status ' + xhr.status;
+            try {
+                const errJson = JSON.parse(xhr.responseText);
+                if (errJson.detail) detail = errJson.detail;
+            } catch (e) {}
+            showUploadError('Error loading sample: ' + detail);
         }
     };
 
     xhr.onerror = () => {
-        alert('Network error loading sample requisition.');
-        resetUploadUI();
+        showUploadError('Network error loading sample requisition.');
     };
 
-    xhr.timeout = 60000;
+    xhr.timeout = 90000;
     xhr.send();
 }
 
 function showProcessing(statusText) {
-    document.getElementById('dropZone').style.display = 'none';
-    document.getElementById('processingBox').style.display = 'flex';
-    document.getElementById('processStatus').innerText = statusText;
+    const dropZone = document.getElementById('dropZone');
+    if (dropZone) dropZone.style.display = 'none';
+
+    const processingBox = document.getElementById('processingBox');
+    if (processingBox) processingBox.style.display = 'flex';
+
+    safeSetText('processStatus', statusText);
 }
 
 function resetUploadUI() {
-    document.getElementById('dropZone').style.display = 'flex';
-    document.getElementById('processingBox').style.display = 'none';
+    const dropZone = document.getElementById('dropZone');
+    if (dropZone) dropZone.style.display = 'flex';
+
+    const processingBox = document.getElementById('processingBox');
+    if (processingBox) processingBox.style.display = 'none';
 }
 
 function updateSidebarActivity(filename) {
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    document.getElementById('recentUploadText').innerText = `${filename} (${timeStr})`;
-    document.getElementById('reportGeneratedText').innerText = 'Processing document...';
+    safeSetText('recentUploadText', `${filename} (${timeStr})`);
+    safeSetText('reportGeneratedText', 'Processing document...');
+}
+
+function showUploadError(errorMessage) {
+    resetUploadUI();
+
+    let errorBanner = document.getElementById('uploadErrorBanner');
+    if (!errorBanner) {
+        errorBanner = document.createElement('div');
+        errorBanner.id = 'uploadErrorBanner';
+        errorBanner.style.cssText = 'background:#FEF2F2;border:1px solid #F87171;color:#991B1B;padding:12px 16px;border-radius:8px;margin:16px 0;width:100%;font-size:14px;display:flex;align-items:center;gap:10px;line-height:1.4;';
+        const dropZone = document.getElementById('dropZone');
+        if (dropZone && dropZone.parentNode) {
+            dropZone.parentNode.insertBefore(errorBanner, dropZone);
+        }
+    }
+    if (errorBanner) {
+        errorBanner.innerHTML = `<strong>Analysis Error:</strong> <span>${escapeHtml(errorMessage)}</span>`;
+        errorBanner.style.display = 'flex';
+    }
+
+    safeSetText('reportGeneratedText', 'Analysis Failed');
+}
+
+function clearUploadError() {
+    const errorBanner = document.getElementById('uploadErrorBanner');
+    if (errorBanner) {
+        errorBanner.style.display = 'none';
+        errorBanner.innerHTML = '';
+    }
 }
 
 function renderProposal(data) {
+    if (!data || typeof data !== 'object') {
+        console.error('[Render] Invalid data passed to renderProposal:', data);
+        showUploadError('Invalid response received from server.');
+        return;
+    }
+
     currentProposalData = data;
 
     // Item Header
-    document.getElementById('docItemDesc').innerText = `Description of the item: ${data.item_description}`;
+    safeSetText('docItemDesc', `Description of the item: ${data.item_description || ''}`);
 
     // Indent Particulars
     const ind = data.indent_particulars || {};
-    document.getElementById('valPRNo').innerText = ind.purchase_requisition_no || '';
-    document.getElementById('valIndentRefNo').innerText = ind.indent_reference_no || '';
-    document.getElementById('valIndentDate').innerText = ind.indent_date || '';
-    document.getElementById('valProposalDate').innerText = ind.proposal_date || '';
-    document.getElementById('valIndentRaisedBy').innerText = ind.indent_raised_by || '';
-    document.getElementById('valEstimate').innerText = ind.estimate || '';
-    document.getElementById('valBasisEstimate').innerText = ind.basis_of_estimate || '';
-    document.getElementById('valFirstTime').innerText = ind.first_time_procurement || '';
-    document.getElementById('valBudgetaryOffers').innerText = ind.budgetary_offers_count || '';
+    safeSetText('valPRNo', ind.purchase_requisition_no || '');
+    safeSetText('valIndentRefNo', ind.indent_reference_no || '');
+    safeSetText('valIndentDate', ind.indent_date || '');
+    safeSetText('valProposalDate', ind.proposal_date || '');
+    safeSetText('valIndentRaisedBy', ind.indent_raised_by || '');
+    safeSetText('valEstimate', ind.estimate || '');
+    safeSetText('valBasisEstimate', ind.basis_of_estimate || '');
+    safeSetText('valFirstTime', ind.first_time_procurement || '');
+    safeSetText('valBudgetaryOffers', ind.budgetary_offers_count || '');
 
     // Previous Purchase Details
     const prev = data.previous_purchase_details || {};
     const prevBody = document.getElementById('prevTableBody');
-    prevBody.innerHTML = '';
-    (prev.items || []).forEach(itm => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${itm.item_sl_no || ''}</td>
-            <td>${itm.at_ref_no || ''}</td>
-            <td>${itm.prev_qty || ''}</td>
-            <td class="font-semibold">${itm.unit_rate_incl_gst || ''}</td>
-        `;
-        prevBody.appendChild(tr);
-    });
-    document.getElementById('valPrevMode').innerText = prev.prev_mode_of_tender || '';
+    if (prevBody) {
+        prevBody.innerHTML = '';
+        (prev.items || []).forEach(itm => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${escapeHtml(itm.item_sl_no || '')}</td>
+                <td>${escapeHtml(itm.at_ref_no || '')}</td>
+                <td>${escapeHtml(itm.prev_qty || '')}</td>
+                <td class="font-semibold">${escapeHtml(itm.unit_rate_incl_gst || '')}</td>
+            `;
+            prevBody.appendChild(tr);
+        });
+    }
+    safeSetText('valPrevMode', prev.prev_mode_of_tender || '');
 
     // Indent Approval
     const ia = data.indent_approval || {};
-    document.getElementById('valApprovingAuth').innerText = ia.approving_authority || '';
-    document.getElementById('valApprovedDate').innerText = ia.indent_approved_date || '';
-    document.getElementById('valModeTender').innerText = ia.mode_of_tender || '';
+    safeSetText('valApprovingAuth', ia.approving_authority || '');
+    safeSetText('valApprovedDate', ia.indent_approved_date || '');
+    safeSetText('valModeTender', ia.mode_of_tender || '');
 
     // Sanction Particulars
     const sp = data.sanction_particulars || {};
-    document.getElementById('valSupplierName').innerText = sp.supplier_name || '';
-    document.getElementById('valOrderValue').innerText = sp.order_value_incl_gst || '';
-    document.getElementById('valDevWrtEstimate').innerText = sp.deviation_wrt_estimate || '';
+    safeSetText('valSupplierName', sp.supplier_name || '');
+    safeSetText('valOrderValue', sp.order_value_incl_gst || '');
+    safeSetText('valDevWrtEstimate', sp.deviation_wrt_estimate || '');
 
     // Negotiation Details
     const neg = data.negotiation_details || {};
     const negHeader = document.getElementById('negTableHeader');
-    if (neg.headers && neg.headers.length) {
-        negHeader.innerHTML = neg.headers.map(h => `<th>${h}</th>`).join('');
+    if (negHeader && neg.headers && neg.headers.length) {
+        negHeader.innerHTML = neg.headers.map(h => `<th>${escapeHtml(h)}</th>`).join('');
     }
     const negBody = document.getElementById('negTableBody');
-    negBody.innerHTML = '';
-    (neg.rows || []).forEach(r => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td class="font-semibold">${r[0] || ''}</td>
-            <td>${r[1] || ''}</td>
-            <td>${r[2] || ''}</td>
-        `;
-        negBody.appendChild(tr);
-    });
+    if (negBody) {
+        negBody.innerHTML = '';
+        (neg.rows || []).forEach(r => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="font-semibold">${escapeHtml(r[0] || '')}</td>
+                <td>${escapeHtml(r[1] || '')}</td>
+                <td>${escapeHtml(r[2] || '')}</td>
+            `;
+            negBody.appendChild(tr);
+        });
+    }
 
     // Narrative Clauses
     const narrativeList = document.getElementById('narrativeList');
-    narrativeList.innerHTML = '';
-    (data.narrative_clauses || []).forEach(clause => {
-        const li = document.createElement('li');
-        // Clean leading numbers if duplicate
-        li.innerText = clause.replace(/^\d+\.\s*/, '');
-        narrativeList.appendChild(li);
-    });
+    if (narrativeList) {
+        narrativeList.innerHTML = '';
+        (data.narrative_clauses || []).forEach(clause => {
+            const li = document.createElement('li');
+            // Clean leading numbers if duplicate
+            li.innerText = String(clause || '').replace(/^\d+\.\s*/, '');
+            narrativeList.appendChild(li);
+        });
+    }
 
     // Proposed Order Terms
     const pot = data.proposed_order_terms || {};
-    document.getElementById('termSupplier').innerText = pot.supplier_name || '';
-    document.getElementById('termItem').innerText = pot.item_description || '';
-    document.getElementById('termValNoGST').innerText = pot.total_order_value_without_gst || '';
-    document.getElementById('termValWithGST').innerText = pot.total_order_value_with_gst || '';
-    document.getElementById('termEstimate').innerText = pot.estimate || '';
-    document.getElementById('termDev').innerText = pot.percent_dev_wrt_estimate || '';
+    safeSetText('termSupplier', pot.supplier_name || '');
+    safeSetText('termItem', pot.item_description || '');
+    safeSetText('termValNoGST', pot.total_order_value_without_gst || '');
+    safeSetText('termValWithGST', pot.total_order_value_with_gst || '');
+    safeSetText('termEstimate', pot.estimate || '');
+    safeSetText('termDev', pot.percent_dev_wrt_estimate || '');
 
     const ct = pot.commercial_terms || {};
-    document.getElementById('termDelivery').innerText = ct.terms_of_delivery || '';
-    document.getElementById('termSchedule').innerText = ct.delivery_schedule || '';
-    document.getElementById('termPayment').innerText = ct.payment_terms || '';
-    document.getElementById('termValidity').innerText = ct.offer_validity || '';
+    safeSetText('termDelivery', ct.terms_of_delivery || '');
+    safeSetText('termSchedule', ct.delivery_schedule || '');
+    safeSetText('termPayment', ct.payment_terms || '');
+    safeSetText('termValidity', ct.offer_validity || '');
 
-    // Approval Section
-    const elSought = document.getElementById('valApprovalSought') || document.getElementById('blockApprovalSought');
-    if (elSought) elSought.innerText = data.approval_sought_for || '';
-    const elDop = document.getElementById('valApprovingDop') || document.getElementById('blockApprovingDop');
-    if (elDop) elDop.innerText = data.approving_authority_dop || '';
-    const elPath = document.getElementById('valApprovalPath') || document.getElementById('blockApprovalPath');
-    if (elPath) elPath.innerText = data.suggested_approval_path || '';
+    // Approval Section (supports both new val* and legacy block* IDs)
+    safeSetText('valApprovalSought', data.approval_sought_for || '', ['blockApprovalSought']);
+    safeSetText('valApprovingDop', data.approving_authority_dop || '', ['blockApprovingDop']);
+    safeSetText('valApprovalPath', data.suggested_approval_path || '', ['blockApprovalPath']);
 
     // Update Sidebar
-    document.getElementById('reportGeneratedText').innerText = 'Proposal Note Ready';
+    safeSetText('reportGeneratedText', 'Proposal Note Ready');
 
     // Show output, hide upload
-    document.getElementById('uploadCard').style.display = 'none';
-    document.getElementById('outputCard').style.display = 'block';
+    const uploadCard = document.getElementById('uploadCard');
+    if (uploadCard) uploadCard.style.display = 'none';
 
-    // Smooth scroll to top of card
-    document.getElementById('outputCard').scrollIntoView({ behavior: 'smooth' });
+    const outputCard = document.getElementById('outputCard');
+    if (outputCard) {
+        outputCard.style.display = 'block';
+        if (typeof outputCard.scrollIntoView === 'function') {
+            outputCard.scrollIntoView({ behavior: 'smooth' });
+        }
+    }
 }
 
 function downloadWordDocument(data) {
+    if (!data) return;
     fetch('/api/download-docx', {
         method: 'POST',
         headers: { 
@@ -325,7 +435,7 @@ function downloadWordDocument(data) {
         body: JSON.stringify(data)
     })
     .then(response => {
-        if (!response.ok) throw new Error('Download failed.');
+        if (!response.ok) throw new Error('Download failed with status ' + response.status);
         return response.blob();
     })
     .then(blob => {
@@ -333,12 +443,18 @@ function downloadWordDocument(data) {
         const a = document.createElement('a');
         a.style.display = 'none';
         a.href = url;
-        const refNo = (data.indent_particulars && data.indent_particulars.purchase_requisition_no) 
+        let refNo = (data.indent_particulars && data.indent_particulars.purchase_requisition_no) 
             ? data.indent_particulars.purchase_requisition_no.split(' ')[0] 
             : 'Proposal';
+        refNo = refNo.replace(/[\\/:*?"<>|]/g, '_');
         a.download = `${refNo}_Purchase_Proposal_Note.docx`;
-        document.body.appendChild(a);
-        a.click();
+        if (document.body) {
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        } else {
+            a.click();
+        }
         window.URL.revokeObjectURL(url);
     })
     .catch(err => {
