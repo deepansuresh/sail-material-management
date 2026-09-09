@@ -341,22 +341,32 @@
                     </div>
 
                     <!-- Approval Section -->
-                    <div class="approval-section">
-                        <h3 class="narrative-heading">Approval Section</h3>
-                        <div class="approval-blocks">
-                        <div class="approval-block">
-                            <h4 class="block-title">Approval Sought For</h4>
-                            <p class="block-content" id="blockApprovalSought"></p>
-                        </div>
-                        <div class="approval-block">
-                            <h4 class="block-title">Approving Authority / DOP / Manual Ref</h4>
-                            <p class="block-content" id="blockApprovingDop"></p>
-                        </div>
-                        <div class="approval-block">
-                            <h4 class="block-title">Suggested Approval Path</h4>
-                            <p class="block-content font-mono" id="blockApprovalPath"></p>
-                        </div>
-                    </div>
+                    <div class="terms-section">
+                        <table class="proposal-table" id="tableApproval">
+                            <thead>
+                                <tr class="row-section-header">
+                                    <th colspan="2">Approval Section</th>
+                                </tr>
+                                <tr class="table-sub-header">
+                                    <th class="col-th-param">Parameter</th>
+                                    <th class="col-th-val">Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td class="col-label">Approval Sought For</td>
+                                    <td class="col-val" id="valApprovalSought"></td>
+                                </tr>
+                                <tr>
+                                    <td class="col-label">Approving Authority / DOP / Manual Ref</td>
+                                    <td class="col-val" id="valApprovingDop"></td>
+                                </tr>
+                                <tr>
+                                    <td class="col-label">Suggested Approval Path</td>
+                                    <td class="col-val font-mono" id="valApprovalPath"></td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
