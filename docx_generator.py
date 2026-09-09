@@ -5,7 +5,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MASTER_TEMPLATE_DOCX = os.path.join(BASE_DIR, "test_proposal.docx")
+MASTER_TEMPLATE_DOCX = os.path.join(BASE_DIR, "output.docx") if os.path.exists(os.path.join(BASE_DIR, "output.docx")) else os.path.join(BASE_DIR, "test_proposal.docx")
 
 FORBIDDEN_WORDS = [
     "not found", "not available", "not applicable", "n/a", "na",
