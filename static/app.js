@@ -296,10 +296,13 @@ function renderProposal(data) {
     document.getElementById('termPayment').innerText = ct.payment_terms || '';
     document.getElementById('termValidity').innerText = ct.offer_validity || '';
 
-    // Approval Blocks
-    document.getElementById('blockApprovalSought').innerText = data.approval_sought_for || '';
-    document.getElementById('blockApprovingDop').innerText = data.approving_authority_dop || '';
-    document.getElementById('blockApprovalPath').innerText = data.suggested_approval_path || '';
+    // Approval Section
+    const elSought = document.getElementById('valApprovalSought') || document.getElementById('blockApprovalSought');
+    if (elSought) elSought.innerText = data.approval_sought_for || '';
+    const elDop = document.getElementById('valApprovingDop') || document.getElementById('blockApprovingDop');
+    if (elDop) elDop.innerText = data.approving_authority_dop || '';
+    const elPath = document.getElementById('valApprovalPath') || document.getElementById('blockApprovalPath');
+    if (elPath) elPath.innerText = data.suggested_approval_path || '';
 
     // Update Sidebar
     document.getElementById('reportGeneratedText').innerText = 'Proposal Note Ready';
