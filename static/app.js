@@ -324,27 +324,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="prop-summary-box">
                     <div class="prop-field-item">
                         <span class="prop-field-label">Indenter</span>
-                        <span class="prop-field-val">${escapeHtml(data.indenter || 'Not found')}</span>
+                        <span class="prop-field-val">${escapeHtml(data.indenter || '')}</span>
                     </div>
                     <div class="prop-field-item">
                         <span class="prop-field-label">Indent Ref</span>
-                        <span class="prop-field-val">${escapeHtml(data.indent_reference || 'Not found')}</span>
+                        <span class="prop-field-val">${escapeHtml(data.indent_reference || '')}</span>
                     </div>
                     <div class="prop-field-item">
                         <span class="prop-field-label">Item Description</span>
-                        <span class="prop-field-val"><strong>${escapeHtml(data.item_description || 'Not found')}</strong></span>
+                        <span class="prop-field-val"><strong>${escapeHtml(data.item_description || '')}</strong></span>
                     </div>
                     <div class="prop-field-item">
                         <span class="prop-field-label">Quantity / Tolerance</span>
-                        <span class="prop-field-val">${escapeHtml(data.quantity || 'Not found')} (${escapeHtml(data.tolerance || 'N/A')})</span>
+                        <span class="prop-field-val">${escapeHtml(data.quantity || '')} (${escapeHtml(data.tolerance || 'N/A')})</span>
                     </div>
                     <div class="prop-field-item">
                         <span class="prop-field-label">Estimated Cost</span>
-                        <span class="prop-field-val" style="color: #38bdf8; font-weight: bold;">${escapeHtml(data.estimated_cost || 'Not found')}</span>
+                        <span class="prop-field-val" style="color: #38bdf8; font-weight: bold;">${escapeHtml(data.estimated_cost || '')}</span>
                     </div>
                     <div class="prop-field-item">
                         <span class="prop-field-label">Mode of Tender</span>
-                        <span class="prop-field-val">${escapeHtml(data.mode_of_tender || 'Not found')}</span>
+                        <span class="prop-field-val">${escapeHtml(data.mode_of_tender || '')}</span>
                     </div>
                 </div>
 
@@ -574,19 +574,19 @@ document.addEventListener('DOMContentLoaded', () => {
             <!-- Background of Proposal (13 Fields) -->
             <h4 style="color: #003366; margin: 10px 0 4px 0; font-size: 11pt; border-bottom: 1px solid #cbd5e1; padding-bottom: 2px;">Background of the Proposal</h4>
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 14px;">
-                <tr><td style="width: 35%; font-weight: bold;">i) Indenter</td><td>${escapeHtml(data.indenter || 'Not found in source document')}</td></tr>
+                <tr><td style="width: 35%; font-weight: bold;">i) Indenter</td><td>${escapeHtml(data.indenter || '')}</td></tr>
                 <tr style="background: #f8fafc;"><td style="font-weight: bold;">ii) Indent ref no & date</td><td>${escapeHtml(data.indent_reference || '')} ${data.indent_date ? 'Dated: ' + escapeHtml(data.indent_date) : ''}</td></tr>
-                <tr><td style="font-weight: bold;">iii) Description of the item</td><td><strong>${escapeHtml(data.item_description || 'Not found in source document')}</strong></td></tr>
+                <tr><td style="font-weight: bold;">iii) Description of the item</td><td><strong>${escapeHtml(data.item_description || '')}</strong></td></tr>
                 <tr style="background: #f8fafc;"><td style="font-weight: bold;">iv) Quantity / Tolerance</td><td>${escapeHtml(data.quantity || '')} ${data.tolerance ? '(Tolerance: ' + escapeHtml(data.tolerance) + ')' : ''}</td></tr>
-                <tr><td style="font-weight: bold;">v) Estimated Cost</td><td><strong style="color: #003366;">${escapeHtml(data.estimated_cost || 'Not found in source document')}</strong></td></tr>
-                <tr style="background: #f8fafc;"><td style="font-weight: bold;">vi) Delivery Period</td><td>${escapeHtml(data.delivery_period || 'Not found in source document')}</td></tr>
-                <tr><td style="font-weight: bold;">vii) EMD</td><td>${escapeHtml(data.emd || 'Not found in source document')}</td></tr>
-                <tr style="background: #f8fafc;"><td style="font-weight: bold;">viii) Distribution of order</td><td>${escapeHtml(data.distribution_of_order || 'Not found in source document')}</td></tr>
-                <tr><td style="font-weight: bold;">ix) Security Deposit</td><td>${escapeHtml(data.security_deposit || 'Not found in source document')}</td></tr>
-                <tr style="background: #f8fafc;"><td style="font-weight: bold;">x) Price Discovery</td><td>${escapeHtml(data.price_discovery || 'Not found in source document')}</td></tr>
-                <tr><td style="font-weight: bold;">xi) Quantity for each Price Discovery</td><td>${escapeHtml(data.price_discovery_quantity || 'Not found in source document')}</td></tr>
-                <tr style="background: #f8fafc;"><td style="font-weight: bold;">xii) Mode of Tender</td><td>${escapeHtml(data.mode_of_tender || 'Not found in source document')}</td></tr>
-                <tr><td style="font-weight: bold;">xiii) Approving Authority</td><td>${escapeHtml(data.approving_authority || 'Not found in source document')}</td></tr>
+                <tr><td style="font-weight: bold;">v) Estimated Cost</td><td><strong style="color: #003366;">${escapeHtml(data.estimated_cost || '')}</strong></td></tr>
+                <tr style="background: #f8fafc;"><td style="font-weight: bold;">vi) Delivery Period</td><td>${escapeHtml(data.delivery_period || '')}</td></tr>
+                <tr><td style="font-weight: bold;">vii) EMD</td><td>${escapeHtml(data.emd || '')}</td></tr>
+                <tr style="background: #f8fafc;"><td style="font-weight: bold;">viii) Distribution of order</td><td>${escapeHtml(data.distribution_of_order || '')}</td></tr>
+                <tr><td style="font-weight: bold;">ix) Security Deposit</td><td>${escapeHtml(data.security_deposit || '')}</td></tr>
+                <tr style="background: #f8fafc;"><td style="font-weight: bold;">x) Price Discovery</td><td>${escapeHtml(data.price_discovery || '')}</td></tr>
+                <tr><td style="font-weight: bold;">xi) Quantity for each Price Discovery</td><td>${escapeHtml(data.price_discovery_quantity || '')}</td></tr>
+                <tr style="background: #f8fafc;"><td style="font-weight: bold;">xii) Mode of Tender</td><td>${escapeHtml(data.mode_of_tender || '')}</td></tr>
+                <tr><td style="font-weight: bold;">xiii) Approving Authority</td><td>${escapeHtml(data.approving_authority || '')}</td></tr>
             </table>
 
             <!-- Proposal Details Clauses -->
