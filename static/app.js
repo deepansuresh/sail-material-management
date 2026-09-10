@@ -1,751 +1,943 @@
-/**
- * SAIL Material Management Module - Salem Steel Plant
- * Frontend Application Controller
- */
+// SAIL Material Management Module - Frontend Script
+
+let currentProposalData = null;
+
+
+
+// Safe DOM text setter: sets innerText only if element exists; supports fallback IDs
+
+function safeSetText(id, value, fallbackIds = []) {
+
+    let el = document.getElementById(id);
+
+    if (!el && fallbackIds && fallbackIds.length) {
+
+        for (const fbId of fallbackIds) {
+
+            el = document.getElementById(fbId);
+
+            if (el) break;
+
+        }
+
+    }
+
+    if (el) {
+
+        el.innerText = (value !== undefined && value !== null) ? String(value) : '';
+
+        return el;
+
+    } else {
+
+        console.warn(`[DOM] Element with id '${id}' not found in current DOM.`);
+
+        return null;
+
+    }
+
+}
+
+
+
+// Safe DOM HTML setter: sets innerHTML only if element exists; supports fallback IDs
+
+function safeSetHtml(id, htmlContent, fallbackIds = []) {
+
+    let el = document.getElementById(id);
+
+    if (!el && fallbackIds && fallbackIds.length) {
+
+        for (const fbId of fallbackIds) {
+
+            el = document.getElementById(fbId);
+
+            if (el) break;
+
+        }
+
+    }
+
+    if (el) {
+
+        el.innerHTML = (htmlContent !== undefined && htmlContent !== null) ? String(htmlContent) : '';
+
+        return el;
+
+    } else {
+
+        console.warn(`[DOM] Element with id '${id}' not found in current DOM.`);
+
+        return null;
+
+    }
+
+}
+
+
+
+// HTML escape helper to prevent injection in dynamic table rows
+
+function escapeHtml(str) {
+
+    if (str === null || str === undefined) return '';
+
+    return String(str)
+
+        .replace(/&/g, '&amp;')
+
+        .replace(/</g, '&lt;')
+
+        .replace(/>/g, '&gt;')
+
+        .replace(/"/g, '&quot;')
+
+        .replace(/'/g, '&#39;');
+
+}
+
+
 
 document.addEventListener('DOMContentLoaded', () => {
-    // State management
-    let selectedFiles = [];
-    let processedDocuments = {};
-    let currentReviewDocId = null;
-    let currentOcrDocId = null;
-    let currentPreviewDocId = null;
 
-    // DOM Elements
-    const fileInput = document.getElementById('fileInput');
-    const selectFileBtn = document.getElementById('selectFileBtn');
-    const sampleFileBtn = document.getElementById('sampleFileBtn');
     const dropZone = document.getElementById('dropZone');
-    const selectedFilesBox = document.getElementById('selectedFilesBox');
-    const fileQueueTbody = document.getElementById('fileQueueTbody');
-    const fileCountBadge = document.getElementById('fileCountBadge');
-    const startAnalyzeBtn = document.getElementById('startAnalyzeBtn');
-    const pipelineBox = document.getElementById('pipelineBox');
-    const resultsContainer = document.getElementById('resultsContainer');
-    const proposalCardsList = document.getElementById('proposalCardsList');
-    const newAnalysisBtn = document.getElementById('newAnalysisBtn');
 
-    // Modals
-    const reviewModal = document.getElementById('reviewModal');
-    const closeReviewModal = document.getElementById('closeReviewModal');
-    const cancelReviewBtn = document.getElementById('cancelReviewBtn');
-    const saveReviewBtn = document.getElementById('saveReviewBtn');
-    const reviewDocMeta = document.getElementById('reviewDocMeta');
-    const reviewFieldsTbody = document.getElementById('reviewFieldsTbody');
+    const fileInput = document.getElementById('fileInput');
 
-    const ocrModal = document.getElementById('ocrModal');
-    const closeOcrModal = document.getElementById('closeOcrModal');
-    const closeOcrBtn = document.getElementById('closeOcrBtn');
-    const copyOcrBtn = document.getElementById('copyOcrBtn');
-    const ocrDocMeta = document.getElementById('ocrDocMeta');
-    const ocrPagesContainer = document.getElementById('ocrPagesContainer');
-    const ocrSearchInput = document.getElementById('ocrSearchInput');
+    const selectBtn = document.getElementById('selectBtn');
 
-    const previewModal = document.getElementById('previewModal');
-    const closePreviewModal = document.getElementById('closePreviewModal');
-    const closePreviewBtn = document.getElementById('closePreviewBtn');
-    const previewPaper = document.getElementById('previewPaper');
-    const previewDownloadDocxBtn = document.getElementById('previewDownloadDocxBtn');
-    const previewDownloadPdfBtn = document.getElementById('previewDownloadPdfBtn');
+    const sampleBtn = document.getElementById('sampleBtn');
 
-    // Tab Navigation
-    const navButtons = document.querySelectorAll('.nav-btn');
-    const tabContents = document.querySelectorAll('.tab-content');
+    const processingBox = document.getElementById('processingBox');
 
-    navButtons.forEach(btn => {
-        btn.addEventListener('click', () => {
-            const targetTab = btn.getAttribute('data-tab');
-            navButtons.forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
+    const uploadCard = document.getElementById('uploadCard');
 
-            tabContents.forEach(tc => {
-                if (tc.id === `tab-${targetTab}`) {
-                    tc.style.display = 'block';
-                } else {
-                    tc.style.display = 'none';
-                }
+    const outputCard = document.getElementById('outputCard');
+
+    const newUploadBtn = document.getElementById('newUploadBtn');
+
+    const downloadDocxBtn = document.getElementById('downloadDocxBtn');
+
+    const printBtn = document.getElementById('printBtn');
+
+
+
+    // Select File trigger
+
+    if (selectBtn && fileInput) {
+
+        selectBtn.addEventListener('click', () => fileInput.click());
+
+    }
+
+
+
+    if (fileInput) {
+
+        fileInput.addEventListener('change', (e) => {
+
+            if (e.target.files && e.target.files[0]) {
+
+                handleFileUpload(e.target.files[0]);
+
+            }
+
+        });
+
+    }
+
+
+
+    // Drag & drop
+
+    if (dropZone) {
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+
+            dropZone.addEventListener(eventName, (e) => {
+
+                e.preventDefault();
+
+                e.stopPropagation();
+
+                dropZone.classList.add('dragover');
+
             });
 
-            if (targetTab === 'dashboard') loadDashboardStats();
-            if (targetTab === 'tracking') loadMaterialTracking();
-            if (targetTab === 'reports') loadReports();
         });
-    });
 
-    // =========================================================================
-    // File Upload & Drag-and-Drop Handlers
-    // =========================================================================
-    selectFileBtn.addEventListener('click', () => fileInput.click());
 
-    fileInput.addEventListener('change', (e) => {
-        handleFilesSelected(Array.from(e.target.files));
-        fileInput.value = ''; // Reset
-    });
 
-    dropZone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        dropZone.classList.add('drag-over');
-    });
+        ['dragleave', 'drop'].forEach(eventName => {
 
-    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+            dropZone.addEventListener(eventName, (e) => {
 
-    dropZone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dropZone.classList.remove('drag-over');
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            handleFilesSelected(Array.from(e.dataTransfer.files));
-        }
-    });
+                e.preventDefault();
 
-    // Sample requisition loader
-    sampleFileBtn.addEventListener('click', async () => {
-        sampleFileBtn.disabled = true;
-        sampleFileBtn.innerHTML = '<span>Loading Sample...</span>';
-        try {
-            // Fetch sample file from scratch directory or static
-            const res = await fetch('/static/sample_indent.pdf').catch(() => null);
-            let blob = null;
-            if (res && res.ok) {
-                blob = await res.blob();
-            } else {
-                // Fallback: create mock blob representing sample indent
-                blob = new Blob(["%PDF-1.4 SAMPLE REQUISITION A612002 / SMS/25/002"], { type: "application/pdf" });
+                e.stopPropagation();
+
+                dropZone.classList.remove('dragover');
+
+            });
+
+        });
+
+
+
+        dropZone.addEventListener('drop', (e) => {
+
+            const dt = e.dataTransfer;
+
+            const files = dt ? dt.files : null;
+
+            if (files && files[0]) {
+
+                handleFileUpload(files[0]);
+
             }
-            const sampleFile = new File([blob], "sample_indent_SMS_25_002.pdf", { type: "application/pdf" });
-            handleFilesSelected([sampleFile]);
-        } catch (err) {
-            alert("Unable to load sample requisition: " + err.message);
-        } finally {
-            sampleFileBtn.disabled = false;
-            sampleFileBtn.innerHTML = `
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38BDF8" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <polygon points="10 8 16 12 10 16 10 8"></polygon>
-                </svg>
-                Load Sample Requisition
-            `;
-        }
-    });
 
-    function handleFilesSelected(files) {
-        for (const file of files) {
-            // Validate PDF
-            if (!file.name.toLowerCase().endsWith('.pdf')) {
-                alert(`File "${file.name}" rejected. Only PDF documents are supported.`);
-                continue;
-            }
-            // Validate 30 MB
-            const sizeMB = file.size / (1024 * 1024);
-            if (sizeMB > 30.0) {
-                alert(`File "${file.name}" exceeds the 30 MB limit (${sizeMB.toFixed(1)} MB).`);
-                continue;
-            }
-            // Avoid duplicates
-            if (!selectedFiles.some(f => f.name === file.name && f.size === file.size)) {
-                selectedFiles.push(file);
-            }
-        }
-        renderSelectedFilesTable();
+        });
+
     }
 
-    function renderSelectedFilesTable() {
-        if (selectedFiles.length === 0) {
-            selectedFilesBox.style.display = 'none';
-            return;
-        }
 
-        selectedFilesBox.style.display = 'block';
-        fileCountBadge.textContent = `${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''}`;
-        fileQueueTbody.innerHTML = '';
 
-        selectedFiles.forEach((file, idx) => {
-            const tr = document.createElement('tr');
-            const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
-            tr.innerHTML = `
-                <td>${idx + 1}</td>
-                <td><strong>${escapeHtml(file.name)}</strong></td>
-                <td>${sizeMB} MB</td>
-                <td>PDF</td>
-                <td><span class="badge-ready">Ready</span></td>
-                <td>
-                    <button class="btn-remove-file" data-index="${idx}" title="Remove file">
-                        &times; Remove
-                    </button>
-                </td>
-            `;
-            fileQueueTbody.appendChild(tr);
+    // Sample trigger
+
+    if (sampleBtn) {
+
+        sampleBtn.addEventListener('click', () => {
+
+            loadSampleRequisition();
+
         });
 
-        // Add remove handlers
-        document.querySelectorAll('.btn-remove-file').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const idx = parseInt(e.target.getAttribute('data-index'), 10);
-                selectedFiles.splice(idx, 1);
-                renderSelectedFilesTable();
+    }
+
+
+
+    // Actions
+
+    if (newUploadBtn) {
+
+        newUploadBtn.addEventListener('click', () => {
+
+            currentProposalData = null;
+
+            if (outputCard) outputCard.style.display = 'none';
+
+            if (uploadCard) uploadCard.style.display = 'flex';
+
+            if (dropZone) dropZone.style.display = 'flex';
+
+            if (processingBox) processingBox.style.display = 'none';
+
+            if (fileInput) fileInput.value = '';
+
+        });
+
+    }
+
+
+
+    if (downloadDocxBtn) {
+
+        downloadDocxBtn.addEventListener('click', () => {
+
+            if (!currentProposalData) return;
+
+            downloadWordDocument(currentProposalData);
+
+        });
+
+    }
+
+
+
+    if (printBtn) {
+
+        printBtn.addEventListener('click', () => {
+
+            window.print();
+
+        }
+
+    // Navigation bar tab activation
+    const navItems = document.querySelectorAll('.nav-item');
+    if (navItems && navItems.length) {
+        navItems.forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.preventDefault();
+                navItems.forEach(n => n.classList.remove('active'));
+                item.classList.add('active');
             });
         });
     }
+);
 
-    // =========================================================================
-    // Analysis Pipeline Execution
-    // =========================================================================
-    startAnalyzeBtn.addEventListener('click', async () => {
-        if (selectedFiles.length === 0) {
-            alert('Please select at least one PDF file to analyze.');
-            return;
-        }
-
-        startAnalyzeBtn.disabled = true;
-        pipelineBox.style.display = 'block';
-
-        const steps = ['upload', 'read', 'render', 'ocr', 'extract', 'validate', 'generate'];
-        let currentStepIdx = 0;
-
-        const updatePipelineUI = (title, sub, stepId) => {
-            document.getElementById('currentStepTitle').textContent = title;
-            document.getElementById('currentStepSub').textContent = sub;
-            steps.forEach(s => {
-                const el = document.getElementById(`step-${s}`);
-                if (el) {
-                    el.classList.remove('current');
-                    if (steps.indexOf(s) < steps.indexOf(stepId)) {
-                        el.classList.add('completed');
-                    }
-                }
-            });
-            const curEl = document.getElementById(`step-${stepId}`);
-            if (curEl) curEl.classList.add('current');
-        };
-
-        try {
-            updatePipelineUI("Uploading Documents...", "Sending files to Salem Steel Plant secure node", "upload");
-
-            const formData = new FormData();
-            if (selectedFiles.length === 1) {
-                formData.append('file', selectedFiles[0]);
-                setTimeout(() => updatePipelineUI("Reading PDF & Extracting Geometry...", "Parsing document page tree and streams", "read"), 800);
-                setTimeout(() => updatePipelineUI("Converting Pages to High-Res Images...", "Preprocessing contrast & sharpness", "render"), 1800);
-                setTimeout(() => updatePipelineUI("Running Multi-Pass OCR Engine...", "Extracting layout text and coordinates", "ocr"), 3000);
-                setTimeout(() => updatePipelineUI("Extracting Procurement Fields...", "Mapping to 13 master template background fields", "extract"), 4500);
-                setTimeout(() => updatePipelineUI("Validating Contextual Rules...", "Checking numbers, currency, and approving authorities", "validate"), 5500);
-
-                const response = await fetch('/api/analyze', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (!response.ok) {
-                    const err = await response.json();
-                    throw new Error(err.detail || 'Analysis request failed');
-                }
-
-                const result = await response.json();
-                processedDocuments[result.document_id] = result;
-                updatePipelineUI("Proposal Generated Successfully!", "Master template populated and ready", "generate");
-
-            } else {
-                // Multi-PDF upload
-                selectedFiles.forEach(f => formData.append('files', f));
-                updatePipelineUI("Processing Multiple Documents...", "Running isolated OCR pipelines per document", "ocr");
-
-                const response = await fetch('/api/analyze-multiple', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (!response.ok) {
-                    const err = await response.json();
-                    throw new Error(err.detail || 'Batch analysis request failed');
-                }
-
-                const batchResult = await response.json();
-                batchResult.documents.forEach(doc => {
-                    processedDocuments[doc.document_id] = doc;
-                });
-                updatePipelineUI("Batch Completed Successfully!", "All proposals generated with document isolation", "generate");
-            }
-
-            // Hide upload box, show results
-            setTimeout(() => {
-                pipelineBox.style.display = 'none';
-                document.getElementById('uploadCard').style.display = 'none';
-                resultsContainer.style.display = 'flex';
-                renderProposalCards();
-            }, 800);
-
-        } catch (err) {
-            alert(`Analysis Error: ${err.message}`);
-            pipelineBox.style.display = 'none';
-            startAnalyzeBtn.disabled = false;
-        }
-    });
-
-    newAnalysisBtn.addEventListener('click', () => {
-        selectedFiles = [];
-        renderSelectedFilesTable();
-        startAnalyzeBtn.disabled = false;
-        document.getElementById('uploadCard').style.display = 'block';
-        resultsContainer.style.display = 'none';
-    });
-
-    // =========================================================================
-    // Render Output Proposal Cards (Multi-Document Isolation)
-    // =========================================================================
-    function renderProposalCards() {
-        proposalCardsList.innerHTML = '';
-        const docIds = Object.keys(processedDocuments);
-
-        if (docIds.length === 0) {
-            proposalCardsList.innerHTML = '<p class="text-muted">No proposal generated yet.</p>';
-            return;
-        }
-
-        docIds.forEach(docId => {
-            const item = processedDocuments[docId];
-            const data = item.data;
-
-            const card = document.createElement('div');
-            card.className = 'proposal-card';
-            card.innerHTML = `
-                <div class="prop-card-top">
-                    <div class="prop-info-block">
-                        <span class="prop-filename">📄 ${escapeHtml(item.filename)}</span>
-                        <div class="prop-meta-tags">
-                            <span>Pages: ${item.pages || 1}</span>
-                            <span>•</span>
-                            <span>Size: ${item.file_size_mb || 0} MB</span>
-                            <span>•</span>
-                            <span>Doc ID: ${docId.substring(0, 8)}</span>
-                        </div>
-                    </div>
-                    <span class="badge-proposal-ready">✓ Proposal Generated</span>
-                </div>
-
-                <div class="prop-summary-box">
-                    <div class="prop-field-item">
-                        <span class="prop-field-label">Indenter</span>
-                        <span class="prop-field-val">${escapeHtml(data.indenter || '')}</span>
-                    </div>
-                    <div class="prop-field-item">
-                        <span class="prop-field-label">Indent Ref</span>
-                        <span class="prop-field-val">${escapeHtml(data.indent_reference || '')}</span>
-                    </div>
-                    <div class="prop-field-item">
-                        <span class="prop-field-label">Item Description</span>
-                        <span class="prop-field-val"><strong>${escapeHtml(data.item_description || '')}</strong></span>
-                    </div>
-                    <div class="prop-field-item">
-                        <span class="prop-field-label">Quantity / Tolerance</span>
-                        <span class="prop-field-val">${escapeHtml(data.quantity || '')} (${escapeHtml(data.tolerance || 'N/A')})</span>
-                    </div>
-                    <div class="prop-field-item">
-                        <span class="prop-field-label">Estimated Cost</span>
-                        <span class="prop-field-val" style="color: #38bdf8; font-weight: bold;">${escapeHtml(data.estimated_cost || '')}</span>
-                    </div>
-                    <div class="prop-field-item">
-                        <span class="prop-field-label">Mode of Tender</span>
-                        <span class="prop-field-val">${escapeHtml(data.mode_of_tender || '')}</span>
-                    </div>
-                </div>
-
-                <div class="prop-actions-row">
-                    <button class="btn btn-outline btn-review" data-id="${docId}">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                        Review Extracted Data
-                    </button>
-                    <button class="btn btn-secondary btn-ocr" data-id="${docId}">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>
-                        View OCR Text
-                    </button>
-                    <button class="btn btn-outline btn-preview-prop" data-id="${docId}">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                        Preview Proposal
-                    </button>
-                    <a href="/api/analysis/${docId}/download/docx" class="btn btn-action" download>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                        Download DOCX
-                    </a>
-                    <a href="/api/analysis/${docId}/download/pdf" class="btn btn-pdf" download>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><polyline points="9 15 12 12 15 15"></polyline></svg>
-                        Download PDF
-                    </a>
-                </div>
-            `;
-            proposalCardsList.appendChild(card);
-        });
-
-        // Attach action handlers
-        document.querySelectorAll('.btn-review').forEach(b => {
-            b.addEventListener('click', (e) => openReviewModalHandler(b.getAttribute('data-id')));
-        });
-        document.querySelectorAll('.btn-ocr').forEach(b => {
-            b.addEventListener('click', (e) => openOcrModalHandler(b.getAttribute('data-id')));
-        });
-        document.querySelectorAll('.btn-preview-prop').forEach(b => {
-            b.addEventListener('click', (e) => openPreviewModalHandler(b.getAttribute('data-id')));
-        });
     }
 
-    // =========================================================================
-    // Review Modal Implementation
-    // =========================================================================
-    function openReviewModalHandler(docId) {
-        currentReviewDocId = docId;
-        const item = processedDocuments[docId];
-        const data = item.data;
-
-        reviewDocMeta.textContent = `File Name: ${item.filename} | Pages: ${item.pages || 1} | OCR Status: Completed`;
-        reviewFieldsTbody.innerHTML = '';
-
-        const fieldsToReview = [
-            { key: "initiator_name", label: "Initiator Name" },
-            { key: "initiator_pno", label: "Initiator PNo" },
-            { key: "initiator_designation", label: "Designation" },
-            { key: "department", label: "Department" },
-            { key: "reference", label: "Reference" },
-            { key: "date", label: "Date" },
-            { key: "subject", label: "Subject" },
-            { key: "indenter", label: "i) Indenter" },
-            { key: "indent_reference", label: "ii) Indent Ref No" },
-            { key: "indent_date", label: "ii) Indent Date" },
-            { key: "item_description", label: "iii) Item Description" },
-            { key: "quantity", label: "iv) Quantity" },
-            { key: "tolerance", label: "iv) Tolerance" },
-            { key: "estimated_cost", label: "v) Estimated Cost" },
-            { key: "delivery_period", label: "vi) Delivery Period" },
-            { key: "emd", label: "vii) EMD" },
-            { key: "distribution_of_order", label: "viii) Distribution of Order" },
-            { key: "security_deposit", label: "ix) Security Deposit" },
-            { key: "price_discovery", label: "x) Price Discovery" },
-            { key: "price_discovery_quantity", label: "xi) Quantity for Each Price Discovery" },
-            { key: "mode_of_tender", label: "xii) Mode of Tender" },
-            { key: "approving_authority", label: "xiii) Approving Authority" }
-        ];
-
-        fieldsToReview.forEach(f => {
-            const tr = document.createElement('tr');
-            const val = data[f.key] || '';
-            tr.innerHTML = `
-                <td><strong>${escapeHtml(f.label)}</strong></td>
-                <td>
-                    <input type="text" class="review-input" data-key="${f.key}" value="${escapeHtml(val)}">
-                </td>
-            `;
-            reviewFieldsTbody.appendChild(tr);
-        });
-
-        reviewModal.style.display = 'flex';
-    }
-
-    closeReviewModal.addEventListener('click', () => reviewModal.style.display = 'none');
-    cancelReviewBtn.addEventListener('click', () => reviewModal.style.display = 'none');
-
-    saveReviewBtn.addEventListener('click', async () => {
-        if (!currentReviewDocId) return;
-
-        saveReviewBtn.disabled = true;
-        saveReviewBtn.textContent = 'Updating...';
-
-        const updatedData = {};
-        document.querySelectorAll('.review-input').forEach(input => {
-            const k = input.getAttribute('data-key');
-            updatedData[k] = input.value.trim();
-        });
-
-        try {
-            const res = await fetch(`/api/analysis/${currentReviewDocId}/update`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(updatedData)
-            });
-
-            if (!res.ok) throw new Error("Failed to update proposal");
-
-            const updatedRes = await res.json();
-            processedDocuments[currentReviewDocId].data = updatedRes.data;
-
-            alert("Proposal updated with user-confirmed values.");
-            reviewModal.style.display = 'none';
-            renderProposalCards();
-        } catch (err) {
-            alert(`Save error: ${err.message}`);
-        } finally {
-            saveReviewBtn.disabled = false;
-            saveReviewBtn.textContent = 'Confirm & Update Proposal';
-        }
-    });
-
-    // =========================================================================
-    // OCR Text Modal Implementation
-    // =========================================================================
-    async function openOcrModalHandler(docId) {
-        currentOcrDocId = docId;
-        const item = processedDocuments[docId];
-
-        ocrDocMeta.textContent = `File Name: ${item.filename} | Total Pages: ${item.pages || 1}`;
-        ocrPagesContainer.innerHTML = '<p class="text-muted">Loading OCR pages...</p>';
-        ocrModal.style.display = 'flex';
-
-        try {
-            const res = await fetch(`/api/analysis/${docId}/ocr`);
-            const data = await res.json();
-
-            ocrPagesContainer.innerHTML = '';
-            if (!data.pages || data.pages.length === 0) {
-                ocrPagesContainer.innerHTML = '<p class="text-muted">No OCR text available for this document.</p>';
-                return;
-            }
-
-            data.pages.forEach(p => {
-                const pBox = document.createElement('div');
-                pBox.className = 'ocr-page-block';
-                pBox.innerHTML = `
-                    <div class="ocr-page-title">Page ${p.page} (${(p.type || 'OCR').toUpperCase()}) — ${p.char_count || (p.text || '').length} characters</div>
-                    <pre class="ocr-pre">${escapeHtml(p.text || '[Empty or Unreadable]')}</pre>
-                `;
-                ocrPagesContainer.appendChild(pBox);
-            });
-        } catch (err) {
-            ocrPagesContainer.innerHTML = `<p class="text-danger">Failed to load OCR text: ${err.message}</p>`;
-        }
-    }
-
-    closeOcrModal.addEventListener('click', () => ocrModal.style.display = 'none');
-    closeOcrBtn.addEventListener('click', () => ocrModal.style.display = 'none');
-
-    copyOcrBtn.addEventListener('click', () => {
-        const pres = document.querySelectorAll('.ocr-pre');
-        let fullText = '';
-        pres.forEach(p => fullText += p.textContent + '\n\n');
-        navigator.clipboard.writeText(fullText).then(() => {
-            copyOcrBtn.textContent = '✓ Copied!';
-            setTimeout(() => copyOcrBtn.textContent = 'Copy All OCR Text', 1800);
-        });
-    });
-
-    ocrSearchInput.addEventListener('input', (e) => {
-        const q = e.target.value.toLowerCase();
-        document.querySelectorAll('.ocr-page-block').forEach(blk => {
-            const txt = blk.textContent.toLowerCase();
-            blk.style.display = txt.includes(q) ? 'block' : 'none';
-        });
-    });
-
-    // =========================================================================
-    // Proposal Preview Modal Implementation
-    // =========================================================================
-    function openPreviewModalHandler(docId) {
-        currentPreviewDocId = docId;
-        const item = processedDocuments[docId];
-        const data = item.data;
-
-        previewDownloadDocxBtn.onclick = () => window.location.href = `/api/analysis/${docId}/download/docx`;
-        previewDownloadPdfBtn.onclick = () => window.location.href = `/api/analysis/${docId}/download/pdf`;
-
-        // Render HTML representation strictly matching the Master Template
-        previewPaper.innerHTML = `
-            <!-- Top SAIL Header -->
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #003366; padding-bottom: 8px; margin-bottom: 12px;">
-                <div style="display: flex; gap: 14px; align-items: center;">
-                    <img src="/static/assets/sail_logo_doc.png" style="height: 65px;" alt="SAIL">
-                    <div>
-                        <h2 style="margin: 0; color: #003366; font-size: 14pt; font-weight: bold;">STEEL AUTHORITY OF INDIA LIMITED</h2>
-                        <h3 style="margin: 2px 0 0 0; color: #475569; font-size: 10.5pt; font-weight: bold;">SALEM STEEL PLANT &bull; MATERIALS MANAGEMENT</h3>
-                        <p style="margin: 3px 0 0 0; font-size: 8.5pt; color: #334155;">
-                            <strong>Plant Code:</strong> ${escapeHtml(data.plant_code || 'SSP')} &nbsp;|&nbsp; <strong>Doc Seq:</strong> ${escapeHtml(data.document_sequence || 'SSP/PUR/PROPOSAL/2025-26')}<br>
-                            <strong>Department:</strong> ${escapeHtml(data.department || 'HQ/MM PURCHASE')}<br>
-                            <strong>Initiator:</strong> ${escapeHtml(data.initiator_name || 'SARAVANAN S')} (PNo: ${escapeHtml(data.initiator_pno || 'L001558')}, ${escapeHtml(data.initiator_designation || 'SM (MM-PUR)')})
-                        </p>
-                    </div>
-                </div>
-                <div style="text-align: right; font-size: 9pt;">
-                    <strong>Ref:</strong> ${escapeHtml(data.reference || 'SSP/SLM/MM PURCHASE/GEN/2025/214')}<br>
-                    <strong>Date:</strong> ${escapeHtml(data.date || '05-05-2025')}<br><br>
-                    <span style="color: #1e40af; font-weight: bold; font-size: 10.5pt;">PURCHASE PROPOSAL NOTE</span><br>
-                    <span style="color: #047857; font-weight: bold; font-size: 9pt;">STATUS: CONFIRMED</span>
-                </div>
-            </div>
-
-            <!-- Subject Box -->
-            <div style="background: #f8fafc; border: 1px solid #94a3b8; padding: 6px 10px; margin-bottom: 14px; border-radius: 4px; font-size: 9.5pt;">
-                <strong>Subject:</strong> ${escapeHtml(data.subject || 'Enquiry proposal for procurement of materials')}
-            </div>
-
-            <!-- Background of Proposal (13 Fields) -->
-            <h4 style="color: #003366; margin: 10px 0 4px 0; font-size: 11pt; border-bottom: 1px solid #cbd5e1; padding-bottom: 2px;">Background of the Proposal</h4>
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 14px;">
-                <tr><td style="width: 35%; font-weight: bold;">i) Indenter</td><td>${escapeHtml(data.indenter || '')}</td></tr>
-                <tr style="background: #f8fafc;"><td style="font-weight: bold;">ii) Indent ref no & date</td><td>${escapeHtml(data.indent_reference || '')} ${data.indent_date ? 'Dated: ' + escapeHtml(data.indent_date) : ''}</td></tr>
-                <tr><td style="font-weight: bold;">iii) Description of the item</td><td><strong>${escapeHtml(data.item_description || '')}</strong></td></tr>
-                <tr style="background: #f8fafc;"><td style="font-weight: bold;">iv) Quantity / Tolerance</td><td>${escapeHtml(data.quantity || '')} ${data.tolerance ? '(Tolerance: ' + escapeHtml(data.tolerance) + ')' : ''}</td></tr>
-                <tr><td style="font-weight: bold;">v) Estimated Cost</td><td><strong style="color: #003366;">${escapeHtml(data.estimated_cost || '')}</strong></td></tr>
-                <tr style="background: #f8fafc;"><td style="font-weight: bold;">vi) Delivery Period</td><td>${escapeHtml(data.delivery_period || '')}</td></tr>
-                <tr><td style="font-weight: bold;">vii) EMD</td><td>${escapeHtml(data.emd || '')}</td></tr>
-                <tr style="background: #f8fafc;"><td style="font-weight: bold;">viii) Distribution of order</td><td>${escapeHtml(data.distribution_of_order || '')}</td></tr>
-                <tr><td style="font-weight: bold;">ix) Security Deposit</td><td>${escapeHtml(data.security_deposit || '')}</td></tr>
-                <tr style="background: #f8fafc;"><td style="font-weight: bold;">x) Price Discovery</td><td>${escapeHtml(data.price_discovery || '')}</td></tr>
-                <tr><td style="font-weight: bold;">xi) Quantity for each Price Discovery</td><td>${escapeHtml(data.price_discovery_quantity || '')}</td></tr>
-                <tr style="background: #f8fafc;"><td style="font-weight: bold;">xii) Mode of Tender</td><td>${escapeHtml(data.mode_of_tender || '')}</td></tr>
-                <tr><td style="font-weight: bold;">xiii) Approving Authority</td><td>${escapeHtml(data.approving_authority || '')}</td></tr>
-            </table>
-
-            <!-- Proposal Details Clauses -->
-            <h4 style="color: #003366; margin: 12px 0 4px 0; font-size: 11pt; border-bottom: 1px solid #cbd5e1; padding-bottom: 2px;">Proposal Details</h4>
-            <div style="font-size: 9pt; line-height: 1.45; color: #1e293b;">
-                ${(data.proposal_details || []).map(c => `<p style="margin: 4px 0;">${escapeHtml(c).replace(/\n/g, '<br>')}</p>`).join('')}
-            </div>
-
-            <!-- Consumption & Stock Tables -->
-            <h4 style="color: #003366; margin: 12px 0 4px 0; font-size: 11pt; border-bottom: 1px solid #cbd5e1; padding-bottom: 2px;">Stock and Pending Supplies</h4>
-            <table style="width: 100%; border-collapse: collapse; text-align: center; margin-bottom: 14px;">
-                <thead>
-                    <tr style="background: #f1f5f9; color: #003366;">
-                        <th>Stock at site</th>
-                        <th>Pending supply</th>
-                        <th>Stock & pending supplies</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>2,494 MT</td>
-                        <td>281 MT</td>
-                        <td><strong>2,775 MT</strong></td>
-                    </tr>
-                </tbody>
-            </table>
-
-            <!-- Approval Sought & DOP -->
-            <h4 style="color: #003366; margin: 12px 0 4px 0; font-size: 11pt;">Approval Sought for</h4>
-            <p style="font-size: 9pt; margin: 2px 0 8px 0;">${escapeHtml(data.approval_sought || '')}</p>
-
-            <h4 style="color: #003366; margin: 8px 0 4px 0; font-size: 11pt;">DOP / Manual / Circular Ref & Approver</h4>
-            <p style="font-size: 9pt; margin: 2px 0 4px 0;">${escapeHtml(data.dop_reference || '')}</p>
-            <p style="font-size: 8.5pt; color: #475569; margin: 0 0 10px 0;"><strong>Approver Routing:</strong> ${escapeHtml(data.approver || '')}</p>
-
-            <!-- Attachments & Status -->
-            <div style="display: flex; justify-content: space-between; background: #f8fafc; border: 1px solid #94a3b8; padding: 8px 12px; border-radius: 4px; font-size: 8.5pt; margin-top: 12px;">
-                <div>
-                    <strong>Attached Files:</strong> ${escapeHtml(data.attached_files || '')}<br>
-                    <strong>Proposal Status:</strong> <span style="color: #047857; font-weight: bold;">APPROVED</span>
-                </div>
-                <div style="text-align: right;">
-                    <strong>Initiator Signature:</strong><br>
-                    <strong>${escapeHtml(data.initiator_name || 'SARAVANAN S')}</strong><br>
-                    ${escapeHtml(data.initiator_designation || 'SM (MM-PUR)')} (PNo: ${escapeHtml(data.initiator_pno || 'L001558')})
-                </div>
-            </div>
-        `;
-
-        previewModal.style.display = 'flex';
-    }
-
-    closePreviewModal.addEventListener('click', () => previewModal.style.display = 'none');
-    closePreviewBtn.addEventListener('click', () => previewModal.style.display = 'none');
-
-    // =========================================================================
-    // Dynamic Tabs Data Loading
-    // =========================================================================
-    async function loadDashboardStats() {
-        try {
-            const res = await fetch('/api/dashboard-stats');
-            const data = await res.json();
-
-            document.getElementById('dashTotalDocs').textContent = data.total_processed;
-            document.getElementById('dashSuccessDocs').textContent = data.successful_analyses;
-            document.getElementById('dashProposalsGen').textContent = data.proposals_generated;
-
-            const tbody = document.getElementById('dashTableTbody');
-            tbody.innerHTML = '';
-
-            if (!data.recent_documents || data.recent_documents.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">No documents analyzed yet.</td></tr>';
-                return;
-            }
-
-            data.recent_documents.forEach(doc => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td><strong>${escapeHtml(doc.filename)}</strong></td>
-                    <td>${doc.date}</td>
-                    <td>${doc.pages}</td>
-                    <td>${escapeHtml(doc.item_description)}</td>
-                    <td>${escapeHtml(doc.estimated_cost)}</td>
-                    <td><span class="badge-ready">Completed</span></td>
-                `;
-                tbody.appendChild(tr);
-            });
-        } catch (e) {
-            console.error("Failed to load dashboard stats", e);
-        }
-    }
-
-    async function loadMaterialTracking() {
-        try {
-            const res = await fetch('/api/material-tracking');
-            const data = await res.json();
-            const tbody = document.getElementById('trackingTableTbody');
-            tbody.innerHTML = '';
-
-            if (!data.materials || data.materials.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-muted">No active tracked materials found.</td></tr>';
-                return;
-            }
-
-            data.materials.forEach(m => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td><strong>${escapeHtml(m.item_description)}</strong></td>
-                    <td>${escapeHtml(m.indent_reference)}</td>
-                    <td>${escapeHtml(m.quantity)}</td>
-                    <td>${escapeHtml(m.tolerance)}</td>
-                    <td style="color: #38bdf8; font-weight: bold;">${escapeHtml(m.estimated_cost)}</td>
-                    <td>${escapeHtml(m.mode_of_tender)}</td>
-                    <td><span class="badge-ready">${escapeHtml(m.procurement_status)}</span></td>
-                    <td><span class="badge-ready">${escapeHtml(m.proposal_status)}</span></td>
-                `;
-                tbody.appendChild(tr);
-            });
-        } catch (e) {
-            console.error("Failed to load material tracking", e);
-        }
-    }
-
-    async function loadReports() {
-        try {
-            const res = await fetch('/api/reports');
-            const data = await res.json();
-            const tbody = document.getElementById('reportsTableTbody');
-            tbody.innerHTML = '';
-
-            if (!data.reports || data.reports.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">No proposal reports generated yet.</td></tr>';
-                return;
-            }
-
-            data.reports.forEach(r => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td><strong>${escapeHtml(r.filename)}</strong></td>
-                    <td>${r.timestamp}</td>
-                    <td>${escapeHtml(r.item)}</td>
-                    <td>${escapeHtml(r.value)}</td>
-                    <td>${escapeHtml(r.tender_mode)}</td>
-                    <td>${escapeHtml(r.approver)}</td>
-                `;
-                tbody.appendChild(tr);
-            });
-        } catch (e) {
-            console.error("Failed to load reports", e);
-        }
-    }
-
-    function escapeHtml(str) {
-        if (!str) return '';
-        return String(str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-    }
 });
+
+
+
+function handleFileUpload(file) {
+
+    if (!file || !file.name) return;
+
+
+
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+
+        showUploadError('Please select a valid PDF document.');
+
+        return;
+
+    }
+
+
+
+    if (file.size > 30 * 1024 * 1024) {
+
+        showUploadError('File size exceeds maximum limit of 30 MB.');
+
+        return;
+
+    }
+
+
+
+    currentProposalData = null;
+
+    clearUploadError();
+
+    showProcessing('Preparing upload for ' + file.name + '...');
+
+    updateSidebarActivity(file.name);
+
+
+
+    const formData = new FormData();
+
+    formData.append('file', file);
+
+
+
+    const progressBar = document.getElementById('progressBar');
+
+    const xhr = new XMLHttpRequest();
+
+    xhr.open('POST', '/api/analyze', true);
+
+
+
+    xhr.upload.onprogress = (e) => {
+
+        if (e.lengthComputable) {
+
+            const percent = Math.round((e.loaded / e.total) * 100);
+
+            const loadedMB = (e.loaded / (1024 * 1024)).toFixed(1);
+
+            const totalMB = (e.total / (1024 * 1024)).toFixed(1);
+
+            if (progressBar) progressBar.style.width = `${Math.min(percent, 90)}%`;
+
+            if (percent < 100) {
+
+                safeSetText('processStatus', `Uploading Document: ${percent}% (${loadedMB} MB / ${totalMB} MB)...`);
+
+            } else {
+
+                safeSetText('processStatus', 'Upload received. Extracting text & running OCR analysis...');
+
+                if (progressBar) progressBar.style.width = '95%';
+
+            }
+
+        }
+
+    };
+
+
+
+    xhr.onload = () => {
+
+        if (xhr.status === 200) {
+
+            try {
+
+                const data = JSON.parse(xhr.responseText);
+
+                if (progressBar) progressBar.style.width = '100%';
+
+                renderProposal(data);
+
+            } catch (err) {
+
+                console.error('[Client Error] Error rendering proposal:', err);
+
+                showUploadError('Failed to display document: ' + err.message);
+
+            }
+
+        } else {
+
+            let detail = 'Server returned status ' + xhr.status;
+
+            try {
+
+                const errJson = JSON.parse(xhr.responseText);
+
+                if (errJson.detail) detail = errJson.detail;
+
+            } catch (e) {}
+
+            console.error('[Server Error]', xhr.status, detail);
+
+            showUploadError(detail);
+
+        }
+
+    };
+
+
+
+    xhr.onerror = () => {
+
+        console.error('[Network Error] XHR network connection error.');
+
+        showUploadError('Network connection error while uploading to server. Please check your connection.');
+
+    };
+
+
+
+    xhr.ontimeout = () => {
+
+        console.error('[Timeout Error] XHR request timed out.');
+
+        showUploadError('Analysis request timed out after 3 minutes. Please try again.');
+
+    };
+
+
+
+    xhr.timeout = 180000; // 3 minutes timeout
+
+    xhr.send(formData);
+
+}
+
+
+
+function loadSampleRequisition() {
+
+    currentProposalData = null;
+
+    clearUploadError();
+
+    showProcessing('Analyzing Sample SAIL Purchase Requisition...');
+
+    updateSidebarActivity('sample_indent.pdf (SAIL Indent)');
+
+
+
+    const progressBar = document.getElementById('progressBar');
+
+    if (progressBar) progressBar.style.width = '50%';
+
+
+
+    const xhr = new XMLHttpRequest();
+
+    xhr.open('POST', '/api/load-sample', true);
+
+
+
+    xhr.onload = () => {
+
+        if (xhr.status === 200) {
+
+            try {
+
+                const data = JSON.parse(xhr.responseText);
+
+                if (progressBar) progressBar.style.width = '100%';
+
+                renderProposal(data);
+
+            } catch (err) {
+
+                console.error('[Client Error] Error rendering sample:', err);
+
+                showUploadError('Failed to display sample data: ' + err.message);
+
+            }
+
+        } else {
+
+            let detail = 'Server returned status ' + xhr.status;
+
+            try {
+
+                const errJson = JSON.parse(xhr.responseText);
+
+                if (errJson.detail) detail = errJson.detail;
+
+            } catch (e) {}
+
+            showUploadError('Error loading sample: ' + detail);
+
+        }
+
+    };
+
+
+
+    xhr.onerror = () => {
+
+        showUploadError('Network error loading sample requisition.');
+
+    };
+
+
+
+    xhr.timeout = 90000;
+
+    xhr.send();
+
+}
+
+
+
+function showProcessing(statusText) {
+
+    const dropZone = document.getElementById('dropZone');
+
+    if (dropZone) dropZone.style.display = 'none';
+
+
+
+    const processingBox = document.getElementById('processingBox');
+
+    if (processingBox) processingBox.style.display = 'flex';
+
+
+
+    safeSetText('processStatus', statusText);
+
+}
+
+
+
+function resetUploadUI() {
+
+    const dropZone = document.getElementById('dropZone');
+
+    if (dropZone) dropZone.style.display = 'flex';
+
+
+
+    const processingBox = document.getElementById('processingBox');
+
+    if (processingBox) processingBox.style.display = 'none';
+
+}
+
+
+
+function updateSidebarActivity(filename) {
+
+    const now = new Date();
+
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    safeSetText('recentUploadText', `${filename} (${timeStr})`);
+
+    safeSetText('reportGeneratedText', 'Processing document...');
+
+}
+
+
+
+function showUploadError(errorMessage) {
+
+    resetUploadUI();
+
+
+
+    let errorBanner = document.getElementById('uploadErrorBanner');
+
+    if (!errorBanner) {
+
+        errorBanner = document.createElement('div');
+
+        errorBanner.id = 'uploadErrorBanner';
+
+        errorBanner.style.cssText = 'background:#FEF2F2;border:1px solid #F87171;color:#991B1B;padding:12px 16px;border-radius:8px;margin:16px 0;width:100%;font-size:14px;display:flex;align-items:center;gap:10px;line-height:1.4;';
+
+        const dropZone = document.getElementById('dropZone');
+
+        if (dropZone && dropZone.parentNode) {
+
+            dropZone.parentNode.insertBefore(errorBanner, dropZone);
+
+        }
+
+    }
+
+    if (errorBanner) {
+
+        errorBanner.innerHTML = `<strong>Analysis Error:</strong> <span>${escapeHtml(errorMessage)}</span>`;
+
+        errorBanner.style.display = 'flex';
+
+    }
+
+
+
+    safeSetText('reportGeneratedText', 'Analysis Failed');
+
+}
+
+
+
+function clearUploadError() {
+
+    const errorBanner = document.getElementById('uploadErrorBanner');
+
+    if (errorBanner) {
+
+        errorBanner.style.display = 'none';
+
+        errorBanner.innerHTML = '';
+
+    }
+
+}
+
+
+
+function renderProposal(data) {
+    if (data && data.data && typeof data.data === 'object' && !data.indent_particulars) { data = data.data; }
+
+
+    if (!data || typeof data !== 'object') {
+
+        console.error('[Render] Invalid data passed to renderProposal:', data);
+
+        showUploadError('Invalid response received from server.');
+
+        return;
+
+    }
+
+
+
+    currentProposalData = data;
+
+
+
+    // Item Header
+
+    safeSetText('docItemDesc', `Description of the item: ${data.item_description || ''}`);
+
+
+
+    // Indent Particulars
+
+    const ind = data.indent_particulars || {};
+
+    safeSetText('valPRNo', ind.purchase_requisition_no || '');
+
+    safeSetText('valIndentRefNo', ind.indent_reference_no || '');
+
+    safeSetText('valIndentDate', ind.indent_date || '');
+
+    safeSetText('valProposalDate', ind.proposal_date || '');
+
+    safeSetText('valIndentRaisedBy', ind.indent_raised_by || '');
+
+    safeSetText('valEstimate', ind.estimate || '');
+
+    safeSetText('valBasisEstimate', ind.basis_of_estimate || '');
+
+    safeSetText('valFirstTime', ind.first_time_procurement || '');
+
+    safeSetText('valBudgetaryOffers', ind.budgetary_offers_count || '');
+
+
+
+    // Previous Purchase Details
+
+    const prev = data.previous_purchase_details || {};
+
+    const prevBody = document.getElementById('prevTableBody');
+
+    if (prevBody) {
+
+        prevBody.innerHTML = '';
+
+        (prev.items || []).forEach(itm => {
+
+            const tr = document.createElement('tr');
+
+            tr.innerHTML = `
+
+                <td>${escapeHtml(itm.item_sl_no || '')}</td>
+
+                <td>${escapeHtml(itm.at_ref_no || '')}</td>
+
+                <td>${escapeHtml(itm.prev_qty || '')}</td>
+
+                <td class="font-semibold">${escapeHtml(itm.unit_rate_incl_gst || '')}</td>
+
+            `;
+
+            prevBody.appendChild(tr);
+
+        });
+
+    }
+
+    safeSetText('valPrevMode', prev.prev_mode_of_tender || '');
+
+
+
+    // Indent Approval
+
+    const ia = data.indent_approval || {};
+
+    safeSetText('valApprovingAuth', ia.approving_authority || '');
+
+    safeSetText('valApprovedDate', ia.indent_approved_date || '');
+
+    safeSetText('valModeTender', ia.mode_of_tender || '');
+
+
+
+    // Sanction Particulars
+
+    const sp = data.sanction_particulars || {};
+
+    safeSetText('valSupplierName', sp.supplier_name || '');
+
+    safeSetText('valOrderValue', sp.order_value_incl_gst || '');
+
+    safeSetText('valDevWrtEstimate', sp.deviation_wrt_estimate || '');
+
+
+
+    // Negotiation Details
+
+    const neg = data.negotiation_details || {};
+
+    const negHeader = document.getElementById('negTableHeader');
+
+    if (negHeader && neg.headers && neg.headers.length) {
+
+        negHeader.innerHTML = neg.headers.map(h => `<th>${escapeHtml(h)}</th>`).join('');
+
+    }
+
+    const negBody = document.getElementById('negTableBody');
+
+    if (negBody) {
+
+        negBody.innerHTML = '';
+
+        (neg.rows || []).forEach(r => {
+
+            const tr = document.createElement('tr');
+
+            tr.innerHTML = `
+
+                <td class="font-semibold">${escapeHtml(r[0] || '')}</td>
+
+                <td>${escapeHtml(r[1] || '')}</td>
+
+                <td>${escapeHtml(r[2] || '')}</td>
+
+            `;
+
+            negBody.appendChild(tr);
+
+        });
+
+    }
+
+
+
+    // Narrative Clauses
+
+    const narrativeList = document.getElementById('narrativeList');
+
+    if (narrativeList) {
+
+        narrativeList.innerHTML = '';
+
+        (data.narrative_clauses || []).forEach(clause => {
+
+            const li = document.createElement('li');
+
+            // Clean leading numbers if duplicate
+
+            li.innerText = String(clause || '').replace(/^\d+\.\s*/, '');
+
+            narrativeList.appendChild(li);
+
+        });
+
+    }
+
+
+
+    // Proposed Order Terms
+
+    const pot = data.proposed_order_terms || {};
+
+    safeSetText('termSupplier', pot.supplier_name || '');
+
+    safeSetText('termItem', pot.item_description || '');
+
+    safeSetText('termValNoGST', pot.total_order_value_without_gst || '');
+
+    safeSetText('termValWithGST', pot.total_order_value_with_gst || '');
+
+    safeSetText('termEstimate', pot.estimate || '');
+
+    safeSetText('termDev', pot.percent_dev_wrt_estimate || '');
+
+
+
+    const ct = pot.commercial_terms || {};
+
+    safeSetText('termDelivery', ct.terms_of_delivery || '');
+
+    safeSetText('termSchedule', ct.delivery_schedule || '');
+
+    safeSetText('termPayment', ct.payment_terms || '');
+
+    safeSetText('termValidity', ct.offer_validity || '');
+
+
+
+    // Approval Section (supports both new val* and legacy block* IDs)
+
+    safeSetText('valApprovalSought', data.approval_sought_for || '', ['blockApprovalSought']);
+
+    safeSetText('valApprovingDop', data.approving_authority_dop || '', ['blockApprovingDop']);
+
+    safeSetText('valApprovalPath', data.suggested_approval_path || '', ['blockApprovalPath']);
+
+
+
+    // Update Sidebar
+
+    safeSetText('reportGeneratedText', 'Proposal Note Ready');
+
+
+
+    // Show output, hide upload
+
+    const uploadCard = document.getElementById('uploadCard');
+
+    if (uploadCard) uploadCard.style.display = 'none';
+
+
+
+    const outputCard = document.getElementById('outputCard');
+
+    if (outputCard) {
+
+        outputCard.style.display = 'block';
+
+        if (typeof outputCard.scrollIntoView === 'function') {
+
+            outputCard.scrollIntoView({ behavior: 'smooth' });
+
+        }
+
+    }
+
+}
+
+
+
+function downloadWordDocument(data) {
+
+    if (!data) return;
+
+    fetch('/api/download-docx', {
+
+        method: 'POST',
+
+        headers: { 
+
+            'Content-Type': 'application/json',
+
+            'ngrok-skip-browser-warning': 'true'
+
+        },
+
+        body: JSON.stringify(data)
+
+    })
+
+    .then(response => {
+
+        if (!response.ok) throw new Error('Download failed with status ' + response.status);
+
+        return response.blob();
+
+    })
+
+    .then(blob => {
+
+        const url = window.URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+
+        a.style.display = 'none';
+
+        a.href = url;
+
+        let refNo = (data.indent_particulars && data.indent_particulars.purchase_requisition_no) 
+
+            ? data.indent_particulars.purchase_requisition_no.split(' ')[0] 
+
+            : 'Proposal';
+
+        refNo = refNo.replace(/[\\/:*?"<>|]/g, '_');
+
+        a.download = `${refNo}_Purchase_Proposal_Note.docx`;
+
+        if (document.body) {
+
+            document.body.appendChild(a);
+
+            a.click();
+
+            document.body.removeChild(a);
+
+        } else {
+
+            a.click();
+
+        }
+
+        window.URL.revokeObjectURL(url);
+
+    })
+
+    .catch(err => {
+
+        console.error(err);
+
+        alert('Could not download Word document: ' + err.message);
+
+    });
+
+}
+
