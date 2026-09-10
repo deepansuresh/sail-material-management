@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.db
+*.zip
+*.log
+.vercel
+uploads/
+outputs/
+test_*.docx
+test_*.pdf
+FINAL_*.docx
+VALIDATED_*.docx
+TRACE_*.docx
+VERIFIED_*.docx
+h_test.db
+history_tmp.db
