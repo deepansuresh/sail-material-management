@@ -1,44 +1,33 @@
 import os
-import sys
-import re
-import shutil
-import tempfile
-import uuid
-import datetime
-import traceback
-from typing import List
-
-# Thread safety & resource limits for cloud PaaS (e.g. Render)
+# Constrain OpenMP and math libraries to 1 thread to avoid thread thrashing on fractional vCPUs
 os.environ["OMP_THREAD_LIMIT"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["PYTHONUNBUFFERED"] = "1"
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Response, Body
+import shutil
+import tempfile
+from fastapi import FastAPI, UploadFile, File, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse
 import uvicorn
 
 import extractor
 import docx_generator
-import pdf_generator
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 UPLOADS_DIR = os.path.join(BASE_DIR, "uploads")
-OUTPUTS_DIR = os.path.join(BASE_DIR, "outputs")
+SAMPLE_PDF_PATH = os.path.join(BASE_DIR, "sample_indent.pdf")
+MANI_PDF_PATH = os.path.join(BASE_DIR, "mani.pdf")
+
 os.makedirs(UPLOADS_DIR, exist_ok=True)
-os.makedirs(OUTPUTS_DIR, exist_ok=True)
 
-app = FastAPI(
-    title="SAIL Material Management Module - Salem Steel Plant",
-    description="Official Procurement Proposal Note Generator & Material Tracking System",
-    version="2026.09.10-production"
-)
+app = FastAPI(title="SAIL Material Management Module - Salem Steel Plant")
 
-# Enable CORS for public cloud deployment
+# Enable full CORS for public deployment access
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -47,36 +36,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static web assets
+# Mount static files
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
-# Custom middleware to bypass tunnel warnings if applicable
 @app.middleware("http")
 async def add_custom_headers(request, call_next):
     response = await call_next(request)
     response.headers["ngrok-skip-browser-warning"] = "true"
     return response
-
-
-# In-memory document session registry with document isolation
-DOCUMENTS_STORE = {}
-RECENT_ACTIVITY = [
-    {
-        "id": "init_1",
-        "title": "System Initialized",
-        "detail": "SAIL Material Management Module active on Salem Steel Plant cloud node",
-        "timestamp": "Just now",
-        "icon": "shield-check"
-    },
-    {
-        "id": "init_2",
-        "title": "Master Template Loaded",
-        "detail": "Salem Steel Plant standard Procurement Proposal Note template verified",
-        "timestamp": "12 min ago",
-        "icon": "file-text"
-    }
-]
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -89,357 +57,119 @@ async def serve_index():
         return HTMLResponse(content=f.read())
 
 
+BUILD_VERSION = "2026.09.09.v20-immutable-template-verified-production"
+
 @app.get("/api/health")
 def health_check():
-    import platform
-    tess_path = shutil.which("tesseract") or extractor.TESSERACT_EXE
-    has_tess = os.path.exists(tess_path) if tess_path else False
+    import platform, subprocess, shutil
+    tess = shutil.which("tesseract")
+    tess_ver = None
+    if tess:
+        try:
+            r = subprocess.run([tess, "--version"], capture_output=True, text=True, timeout=10)
+            tess_ver = r.stdout.splitlines()[0] if r.stdout else r.stderr.splitlines()[0]
+        except Exception as e:
+            tess_ver = str(e)
+            
     return {
         "status": "ok",
-        "service": "SAIL Material Management Module - Salem Steel Plant",
-        "version": app.version,
+        "version": BUILD_VERSION,
+        "is_docker": os.path.exists("/.dockerenv"),
         "platform": platform.platform(),
         "python_version": platform.python_version(),
-        "tesseract_available": has_tess,
-        "max_file_size_mb": 30,
-        "active_documents": len(DOCUMENTS_STORE)
+        "tesseract_path": tess,
+        "tesseract_version": tess_ver,
+        "omp_thread_limit": os.environ.get("OMP_THREAD_LIMIT")
     }
-
-
-def _process_single_pdf_file(file_content: bytes, original_filename: str) -> dict:
-    """Internal helper to process a single PDF file with full multi-document isolation."""
-    # 1. 30 MB validation
-    size_mb = len(file_content) / (1024 * 1024)
-    if size_mb > 30.0:
-        raise HTTPException(
-            status_code=400,
-            detail=f"File '{original_filename}' exceeds the 30 MB limit ({size_mb:.2f} MB)."
-        )
-
-    # 2. PDF format check
-    if not original_filename.lower().endswith(".pdf"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid file type for '{original_filename}'. Only PDF files are supported."
-        )
-
-    doc_id = str(uuid.uuid4())
-    tmp_path = os.path.join(UPLOADS_DIR, f"{doc_id}_{original_filename}")
-    
-    try:
-        with open(tmp_path, "wb") as f:
-            f.write(file_content)
-
-        print(f"[API] Processing document '{original_filename}' ({size_mb:.2f} MB) with ID: {doc_id}", flush=True)
-
-        # 3. OCR & text extraction
-        extracted_data = extractor.extract_text_from_pdf(tmp_path, max_pages=30, total_timeout_sec=120)
-        total_pages = extracted_data.get("total_pages", 1)
-        raw_ocr_pages = extracted_data.get("pages", [])
-        combined_text = extracted_data.get("combined_text", "")
-
-        # 4. Procurement parsing into master template format
-        proposal_data = extractor.parse_purchase_requisition(combined_text, filename=original_filename)
-
-        # 5. Generate outputs (DOCX and PDF)
-        docx_path = os.path.join(OUTPUTS_DIR, f"{doc_id}_Purchase_Proposal_Note.docx")
-        pdf_path = os.path.join(OUTPUTS_DIR, f"{doc_id}_Purchase_Proposal_Note.pdf")
-
-        docx_generator.generate_purchase_proposal_docx(proposal_data, docx_path)
-        pdf_generator.generate_purchase_proposal_pdf(proposal_data, pdf_path)
-
-        now_str = datetime.datetime.now().strftime("%d-%m-%Y %H:%M:%S")
-
-        doc_record = {
-            "document_id": doc_id,
-            "filename": original_filename,
-            "file_size_mb": round(size_mb, 2),
-            "pages": total_pages,
-            "ocr_status": "completed",
-            "extraction_status": "completed",
-            "proposal_status": "generated",
-            "timestamp": now_str,
-            "data": proposal_data,
-            "ocr_pages": raw_ocr_pages,
-            "docx_path": docx_path,
-            "pdf_path": pdf_path
-        }
-
-        # Store in isolated session dictionary
-        DOCUMENTS_STORE[doc_id] = doc_record
-
-        # Append to activity feed
-        RECENT_ACTIVITY.insert(0, {
-            "id": f"act_{doc_id[:8]}",
-            "title": f"Analyzed: {original_filename}",
-            "detail": f"Generated Proposal for {proposal_data.get('item_description', 'Materials')[:32]}",
-            "timestamp": "Just now",
-            "icon": "check-circle"
-        })
-
-        return {
-            "success": True,
-            "document_id": doc_id,
-            "filename": original_filename,
-            "pages": total_pages,
-            "file_size_mb": round(size_mb, 2),
-            "ocr_status": "completed",
-            "extraction_status": "completed",
-            "proposal_status": "generated",
-            "data": proposal_data
-        }
-
-    finally:
-        if os.path.exists(tmp_path):
-            try:
-                os.remove(tmp_path)
-            except Exception:
-                pass
 
 
 @app.post("/api/analyze")
-async def analyze_single_pdf(file: UploadFile = File(...)):
-    """Analyze a single uploaded purchase requisition PDF."""
+def analyze_pdf(file: UploadFile = File(...)):
+    """
+    Reads newly uploaded PDF from scratch.
+    Synchronous def runs in FastAPI threadpool to prevent blocking the asyncio event loop.
+    """
+    print(f"[API] >>> Received upload request for file: {file.filename}", flush=True)
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+
+    import traceback
+    tmp_path = None
     try:
-        content = await file.read()
-        return _process_single_pdf_file(content, file.filename)
-    except HTTPException:
-        raise
+        suffix = os.path.splitext(file.filename)[1]
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp_path = tmp.name
+            shutil.copyfileobj(file.file, tmp)
+
+        file_size_mb = os.path.getsize(tmp_path) / (1024 * 1024)
+        print(f"[API] Saved upload to {tmp_path} ({file_size_mb:.2f} MB). Starting extraction...", flush=True)
+
+        # Extract freshly from the newly uploaded PDF with 90s budget (supports up to 24 pages)
+        extracted_text = extractor.extract_text_from_pdf(tmp_path, max_pages=24, total_timeout_sec=90)
+        print(f"[API] Extraction completed ({len(extracted_text)} chars). Parsing proposal data...", flush=True)
+        
+        # Parse into fixed structured proposal template
+        proposal_data = extractor.parse_purchase_requisition(extracted_text, filename=file.filename)
+        print(f"[API] Success! Returning purchase proposal for: {file.filename}", flush=True)
+        return proposal_data
+    except (TimeoutError, RuntimeError) as te:
+        print(f"[ERROR] /api/analyze timed out or failed for {file.filename}: {te}", flush=True)
+        raise HTTPException(status_code=408, detail=f"Analysis timed out: {str(te)}")
     except Exception as e:
+        print(f"[ERROR] /api/analyze failed for {file.filename}: {e}", flush=True)
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Analysis failed for '{file.filename}': {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except:
+                pass
 
 
-@app.post("/api/analyze-multiple")
-async def analyze_multiple_pdfs(files: List[UploadFile] = File(...)):
+@app.post("/api/load-sample")
+def load_sample():
     """
-    Analyze multiple purchase requisition PDFs in a single session.
-    Guarantees strict multi-document isolation: each document has its own
-    independent OCR, extracted fields, and generated proposal.
+    Loads sample document dynamically using the exact same parsing pipeline in threadpool.
     """
-    if not files or len(files) == 0:
-        raise HTTPException(status_code=400, detail="No files provided for analysis.")
-
-    results = []
-    errors = []
-
-    for file in files:
+    target = SAMPLE_PDF_PATH if os.path.exists(SAMPLE_PDF_PATH) else MANI_PDF_PATH
+    if os.path.exists(target):
         try:
-            content = await file.read()
-            res = _process_single_pdf_file(content, file.filename)
-            results.append(res)
+            extracted_text = extractor.extract_text_from_pdf(target, max_pages=16)
+            proposal_data = extractor.parse_purchase_requisition(extracted_text, filename=os.path.basename(target))
+            return proposal_data
         except Exception as e:
-            errors.append({
-                "filename": file.filename,
-                "error": str(e)
-            })
-
-    return {
-        "success": len(results) > 0,
-        "total_submitted": len(files),
-        "total_processed": len(results),
-        "documents": results,
-        "errors": errors
-    }
-
-
-@app.get("/api/analysis/{doc_id}")
-def get_analysis_result(doc_id: str):
-    """Retrieve extracted fields and proposal metadata for a document."""
-    if doc_id not in DOCUMENTS_STORE:
-        raise HTTPException(status_code=404, detail="Document analysis not found.")
-    doc = DOCUMENTS_STORE[doc_id]
-    return {
-        "success": True,
-        "document_id": doc_id,
-        "filename": doc["filename"],
-        "pages": doc["pages"],
-        "file_size_mb": doc["file_size_mb"],
-        "ocr_status": doc["ocr_status"],
-        "extraction_status": doc["extraction_status"],
-        "proposal_status": doc["proposal_status"],
-        "data": doc["data"]
-    }
-
-
-@app.get("/api/analysis/{doc_id}/ocr")
-def get_ocr_text(doc_id: str):
-    """View per-page OCR text extracted from the document."""
-    if doc_id not in DOCUMENTS_STORE:
-        raise HTTPException(status_code=404, detail="Document not found.")
-    doc = DOCUMENTS_STORE[doc_id]
-    return {
-        "document_id": doc_id,
-        "filename": doc["filename"],
-        "total_pages": doc["pages"],
-        "pages": doc.get("ocr_pages", [])
-    }
-
-
-@app.get("/api/analysis/{doc_id}/proposal")
-def get_proposal_data(doc_id: str):
-    """Fetch structured proposal data matching the master procurement template."""
-    if doc_id not in DOCUMENTS_STORE:
-        raise HTTPException(status_code=404, detail="Document not found.")
-    return DOCUMENTS_STORE[doc_id]["data"]
-
-
-@app.post("/api/analysis/{doc_id}/update")
-def update_proposal_data(doc_id: str, updated_data: dict = Body(...)):
-    """Allow user review and confirmation of extracted values before downloading."""
-    if doc_id not in DOCUMENTS_STORE:
-        raise HTTPException(status_code=404, detail="Document not found.")
-    
-    doc = DOCUMENTS_STORE[doc_id]
-    doc["data"].update(updated_data)
-    doc["user_confirmed"] = True
-
-    # Regenerate files with confirmed values
-    docx_generator.generate_purchase_proposal_docx(doc["data"], doc["docx_path"])
-    pdf_generator.generate_purchase_proposal_pdf(doc["data"], doc["pdf_path"])
-
-    return {
-        "success": True,
-        "message": "Extracted values successfully confirmed and proposal updated.",
-        "data": doc["data"]
-    }
-
-
-@app.get("/api/analysis/{doc_id}/download/docx")
-def download_docx_by_id(doc_id: str):
-    """Download official Purchase Proposal Note in Word (.docx) format."""
-    if doc_id not in DOCUMENTS_STORE:
-        raise HTTPException(status_code=404, detail="Document not found.")
-    doc = DOCUMENTS_STORE[doc_id]
-    path = doc["docx_path"]
-    if not os.path.exists(path):
-        docx_generator.generate_purchase_proposal_docx(doc["data"], path)
-
-    ref_str = re.sub(r'[^A-Za-z0-9_-]', '_', doc["data"].get("indent_reference", "Proposal"))[:20]
-    filename = f"{ref_str}_Purchase_Proposal_Note.docx"
-    return FileResponse(
-        path=path,
-        filename=filename,
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    )
-
-
-@app.get("/api/analysis/{doc_id}/download/pdf")
-def download_pdf_by_id(doc_id: str):
-    """Download official Purchase Proposal Note in PDF (.pdf) format."""
-    if doc_id not in DOCUMENTS_STORE:
-        raise HTTPException(status_code=404, detail="Document not found.")
-    doc = DOCUMENTS_STORE[doc_id]
-    path = doc["pdf_path"]
-    if not os.path.exists(path):
-        pdf_generator.generate_purchase_proposal_pdf(doc["data"], path)
-
-    ref_str = re.sub(r'[^A-Za-z0-9_-]', '_', doc["data"].get("indent_reference", "Proposal"))[:20]
-    filename = f"{ref_str}_Purchase_Proposal_Note.pdf"
-    return FileResponse(
-        path=path,
-        filename=filename,
-        media_type="application/pdf"
-    )
+            raise HTTPException(status_code=500, detail=f"Sample loading failed: {str(e)}")
+    else:
+        raise HTTPException(status_code=404, detail="Sample PDF not found")
 
 
 @app.post("/api/download-docx")
-def download_docx_from_json(data: dict = Body(...)):
-    """Generate and return DOCX directly from JSON payload."""
+async def download_docx(data: dict):
     try:
-        tmp_path = os.path.join(tempfile.gettempdir(), f"{uuid.uuid4()}_proposal.docx")
-        docx_generator.generate_purchase_proposal_docx(data, tmp_path)
-        ref_str = re.sub(r'[^A-Za-z0-9_-]', '_', data.get("indent_reference", "Proposal"))[:20]
+        tmp_dir = tempfile.gettempdir()
+        filename = "Purchase_Proposal_Note.docx"
+        out_path = os.path.join(tmp_dir, filename)
+        
+        docx_generator.generate_purchase_proposal_docx(data, out_path)
+        
+        pr_raw = (
+            data.get("indent_particulars", {})
+            .get("purchase_requisition_no", "Proposal")
+            .split()[0]
+            .replace("/", "_")
+            .replace("\\", "_")
+        )
+        download_name = f"{pr_raw}_Purchase_Proposal_Note.docx"
+        
         return FileResponse(
-            path=tmp_path,
-            filename=f"{ref_str}_Purchase_Proposal_Note.docx",
+            path=out_path,
+            filename=download_name,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"DOCX generation failed: {str(e)}")
-
-
-@app.post("/api/download-pdf")
-def download_pdf_from_json(data: dict = Body(...)):
-    """Generate and return PDF directly from JSON payload."""
-    try:
-        tmp_path = os.path.join(tempfile.gettempdir(), f"{uuid.uuid4()}_proposal.pdf")
-        pdf_generator.generate_purchase_proposal_pdf(data, tmp_path)
-        ref_str = re.sub(r'[^A-Za-z0-9_-]', '_', data.get("indent_reference", "Proposal"))[:20]
-        return FileResponse(
-            path=tmp_path,
-            filename=f"{ref_str}_Purchase_Proposal_Note.pdf",
-            media_type="application/pdf"
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
-
-
-@app.get("/api/dashboard-stats")
-def get_dashboard_stats():
-    """Metrics for Dashboard navigation page."""
-    total_docs = len(DOCUMENTS_STORE)
-    recent_docs = []
-    for d_id, item in list(DOCUMENTS_STORE.items())[-10:]:
-        recent_docs.append({
-            "document_id": d_id,
-            "filename": item["filename"],
-            "date": item["timestamp"],
-            "pages": item["pages"],
-            "status": "Completed",
-            "proposal_status": item["proposal_status"],
-            "item_description": item["data"].get("item_description", "N/A"),
-            "estimated_cost": item["data"].get("estimated_cost", "N/A")
-        })
-
-    return {
-        "total_processed": total_docs,
-        "successful_analyses": total_docs,
-        "failed_analyses": 0,
-        "proposals_generated": total_docs,
-        "recent_documents": recent_docs,
-        "recent_activity": RECENT_ACTIVITY[:8]
-    }
-
-
-@app.get("/api/material-tracking")
-def get_material_tracking():
-    """Extracted procurement materials inventory for Material Tracking tab."""
-    materials = []
-    for d_id, item in DOCUMENTS_STORE.items():
-        data = item["data"]
-        materials.append({
-            "document_id": d_id,
-            "item_description": data.get("item_description", "Not found"),
-            "quantity": data.get("quantity", "Not found"),
-            "tolerance": data.get("tolerance", "Not found"),
-            "indent_reference": data.get("indent_reference", "Not found"),
-            "estimated_cost": data.get("estimated_cost", "Not found"),
-            "mode_of_tender": data.get("mode_of_tender", "Not found"),
-            "procurement_status": "Active Indent",
-            "proposal_status": "Proposal Generated"
-        })
-    return {"materials": materials}
-
-
-@app.get("/api/reports")
-def get_reports():
-    """Summary of all processed reports for Reports tab."""
-    reports_list = []
-    for d_id, item in DOCUMENTS_STORE.items():
-        data = item["data"]
-        reports_list.append({
-            "document_id": d_id,
-            "filename": item["filename"],
-            "timestamp": item["timestamp"],
-            "item": data.get("item_description", "N/A"),
-            "value": data.get("estimated_cost", "N/A"),
-            "tender_mode": data.get("mode_of_tender", "N/A"),
-            "approver": data.get("approving_authority", "N/A")
-        })
-    return {"reports": reports_list}
+        raise HTTPException(status_code=500, detail=f"Word doc generation failed: {str(e)}")
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
-    uvicorn.run("server:app", host="0.0.0.0", port=port, reload=False)
+    uvicorn.run(app, host="0.0.0.0", port=8080)
