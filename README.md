@@ -17,3 +17,5 @@ Deploy to Render, Railway, or any Docker-compatible PaaS:
 - Dynamic data extraction with zero hardcoding.
 - Word document (.docx) generation matching official layout.
 - Fast, clean, responsive web interface.
+
+<!-- Render deployment trigger: 1789057429 -->
