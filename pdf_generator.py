@@ -358,18 +358,16 @@ def generate_purchase_proposal_pdf(data: dict, output_path: str) -> str:
                 ])
     else:
         # Fill default structured table from document context if available
-        cons_table_rows.append([
-            Paragraph("2022-23", table_cell_style), Paragraph("24,477", table_cell_style), Paragraph("1,40,050", table_cell_style), Paragraph("23", table_cell_style), Paragraph("1,064", table_cell_style)
-        ])
-        cons_table_rows.append([
-            Paragraph("2023-24", table_cell_style), Paragraph("25,249", table_cell_style), Paragraph("1,52,493", table_cell_style), Paragraph("24", table_cell_style), Paragraph("1,052", table_cell_style)
-        ])
-        cons_table_rows.append([
-            Paragraph("2024-25", table_cell_style), Paragraph("32,248", table_cell_style), Paragraph("1,45,891", table_cell_style), Paragraph("24", table_cell_style), Paragraph("1,344", table_cell_style)
-        ])
-        cons_table_rows.append([
-            Paragraph("<b>Average</b>", table_cell_bold), Paragraph("-", table_cell_style), Paragraph("-", table_cell_style), Paragraph("-", table_cell_style), Paragraph("<b>1,153</b>", table_cell_bold)
-        ])
+        dyn_cons = data.get("consumption_data") or [
+            ["2022-23", "0", "0", "0", "0"],
+            ["2023-24", "0", "0", "0", "0"],
+            ["2024-25", "0", "0", "0", "0"],
+            ["Average", "0", "0", "0", "0"]
+        ]
+        for r in dyn_cons:
+            is_avg = (r[0] == "Average")
+            st = table_cell_bold if is_avg else table_cell_style
+            cons_table_rows.append([Paragraph(str(c), st) for c in r])
 
     cons_tbl = Table(cons_table_rows, colWidths=[1.3*inch, 1.9*inch, 1.4*inch, 1.1*inch, 1.55*inch])
     cons_tbl.setStyle(TableStyle([
@@ -393,15 +391,10 @@ def generate_purchase_proposal_pdf(data: dict, output_path: str) -> str:
         Paragraph("<b>Pending supply</b>", table_header_style),
         Paragraph("<b>Stock & pending supplies</b>", table_header_style)
     ]
-    stock_data = data.get("stock_and_pending", {})
-    if isinstance(stock_data, dict):
-        site_stk = clean_text(stock_data.get("stock_at_site", "2,494 MT"))
-        pend_stk = clean_text(stock_data.get("pending_supply", "281 MT"))
-        tot_stk = clean_text(stock_data.get("total_stock", "2,775 MT"))
-    else:
-        site_stk = "2,494 MT"
-        pend_stk = "281 MT"
-        tot_stk = "2,775 MT"
+    raw_stk = data.get("stock_data") or ["0 MT", "0 MT", "0 MT"]
+    site_stk = str(raw_stk[0]) if len(raw_stk) > 0 else "0 MT"
+    pend_stk = str(raw_stk[1]) if len(raw_stk) > 1 else "0 MT"
+    tot_stk = str(raw_stk[2]) if len(raw_stk) > 2 else "0 MT"
 
     stock_tbl_data = [
         stock_headers,
