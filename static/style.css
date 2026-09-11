@@ -721,4 +721,118 @@ body {
     .narrative-list li, .block-content {
         color: #000000 !important;
     }
-}
+}
+
+
+
+/* Accessibility & Upload improvements */
+.visually-hidden {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+.selected-file-box {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.2rem;
+    background: rgba(30, 48, 85, 0.7);
+    border: 1px solid #38BDF8;
+    border-radius: 10px;
+    padding: 0.9rem 1.4rem;
+    margin-bottom: 1.2rem;
+    max-width: 520px;
+    width: 100%;
+}
+
+.selected-file-info {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    overflow: hidden;
+}
+
+.file-icon-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    background: rgba(56, 189, 248, 0.15);
+    border-radius: 8px;
+    flex-shrink: 0;
+}
+
+.file-details {
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+    overflow: hidden;
+}
+
+.file-name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #FFFFFF;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 250px;
+}
+
+.file-size {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.selected-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-shrink: 0;
+}
+
+.btn-analyze-now {
+    background-color: #0284C7;
+    color: #FFFFFF;
+    padding: 0.55rem 1.2rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    transition: all 0.2s ease;
+}
+
+.btn-analyze-now:hover {
+    background-color: #0369A1;
+    transform: translateY(-1px);
+}
+
+.btn-change-file {
+    background: transparent;
+    color: var(--text-muted);
+    padding: 0.55rem 0.8rem;
+    font-size: 0.85rem;
+    border: 1px solid #334B77;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-change-file:hover {
+    color: #FFFFFF;
+    border-color: #64748B;
+}
