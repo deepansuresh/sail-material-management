@@ -8,6 +8,7 @@ os.environ["PYTHONUNBUFFERED"] = "1"
 
 import shutil
 import tempfile
+from typing import List, Optional
 from fastapi import FastAPI, UploadFile, File, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -83,17 +84,16 @@ def health_check():
     }
 
 
-@app.post("/api/analyze")
-def analyze_pdf(file: UploadFile = File(...)):
+def process_single_pdf_upload(file: UploadFile) -> dict:
     """
-    Reads newly uploaded PDF from scratch.
-    Synchronous def runs in FastAPI threadpool to prevent blocking the asyncio event loop.
+    Safely processes a single uploaded PDF file in complete isolation.
+    Guarantees cleanup of temporary storage and avoids shared state.
     """
-    print(f"[API] >>> Received upload request for file: {file.filename}", flush=True)
+    if not file or not file.filename:
+        raise HTTPException(status_code=400, detail="Invalid file provided.")
     if not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+        raise HTTPException(status_code=400, detail=f"File '{file.filename}' is not a valid PDF document.")
 
-    import traceback
     tmp_path = None
     try:
         suffix = os.path.splitext(file.filename)[1]
@@ -102,29 +102,64 @@ def analyze_pdf(file: UploadFile = File(...)):
             shutil.copyfileobj(file.file, tmp)
 
         file_size_mb = os.path.getsize(tmp_path) / (1024 * 1024)
-        print(f"[API] Saved upload to {tmp_path} ({file_size_mb:.2f} MB). Starting extraction...", flush=True)
+        print(f"[API] Processing '{file.filename}' ({file_size_mb:.2f} MB)...", flush=True)
 
-        # Extract freshly from the newly uploaded PDF with 90s budget (supports up to 24 pages)
         extracted_text = extractor.extract_text_from_pdf(tmp_path, max_pages=24, total_timeout_sec=90)
-        print(f"[API] Extraction completed ({len(extracted_text)} chars). Parsing proposal data...", flush=True)
-        
-        # Parse into fixed structured proposal template
         proposal_data = extractor.parse_purchase_requisition(extracted_text, filename=file.filename)
-        print(f"[API] Success! Returning purchase proposal for: {file.filename}", flush=True)
         return proposal_data
-    except (TimeoutError, RuntimeError) as te:
-        print(f"[ERROR] /api/analyze timed out or failed for {file.filename}: {te}", flush=True)
-        raise HTTPException(status_code=408, detail=f"Analysis timed out: {str(te)}")
-    except Exception as e:
-        print(f"[ERROR] /api/analyze failed for {file.filename}: {e}", flush=True)
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
     finally:
         if tmp_path and os.path.exists(tmp_path):
             try:
                 os.remove(tmp_path)
             except:
                 pass
+
+
+@app.post("/api/analyze")
+def analyze_pdf(
+    files: Optional[List[UploadFile]] = File(None),
+    file: Optional[UploadFile] = File(None)
+):
+    """
+    Accepts one or multiple uploaded PDF files.
+    Processes each file completely independently in isolation.
+    """
+    upload_list = []
+    if files:
+        upload_list.extend(files)
+    if file:
+        upload_list.append(file)
+
+    if not upload_list:
+        raise HTTPException(status_code=400, detail="No PDF file uploaded.")
+
+    # If exactly 1 file was uploaded, return proposal_data directly for 100% backward compatibility
+    if len(upload_list) == 1:
+        return process_single_pdf_upload(upload_list[0])
+
+    # If multiple files were uploaded, process each independently
+    results = []
+    for f in upload_list:
+        try:
+            data = process_single_pdf_upload(f)
+            results.append({
+                "filename": f.filename,
+                "status": "success",
+                "data": data
+            })
+        except Exception as e:
+            results.append({
+                "filename": f.filename,
+                "status": "error",
+                "error": str(e)
+            })
+
+    return {
+        "status": "ok",
+        "is_batch": True,
+        "count": len(results),
+        "results": results
+    }
 
 
 @app.post("/api/load-sample")
