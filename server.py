@@ -57,7 +57,7 @@ async def serve_index():
         return HTMLResponse(content=f.read())
 
 
-BUILD_VERSION = "2026.09.09.v20-immutable-template-verified-production"
+BUILD_VERSION = "2026.09.11.v21-upload-fixed-master-template-verified"
 
 @app.get("/api/health")
 def health_check():
