@@ -137,12 +137,12 @@ def generate_purchase_proposal_docx(data: dict, output_path: str) -> str:
 
     # Table 4: Consumption Data (5 rows)
     t4 = doc.tables[4]
-    cons_rows = data.get("consumption_data", [
-        ["2022-23", "24477", "140050", "23", "1064"],
-        ["2023-24", "25249", "152493", "24", "1052"],
-        ["2024-25", "32248", "145891", "24", "1344"],
-        ["Average", "27325", "146145", "24", "1153"],
-    ])
+    cons_rows = data.get("consumption_data") or [
+        ["2022-23", "0", "0", "0", "0"],
+        ["2023-24", "0", "0", "0", "0"],
+        ["2024-25", "0", "0", "0", "0"],
+        ["Average", "0", "0", "0", "0"],
+    ]
     for r_i, c_row in enumerate(cons_rows):
         target_row_idx = r_i + 1
         if target_row_idx < len(t4.rows):
@@ -153,7 +153,7 @@ def generate_purchase_proposal_docx(data: dict, output_path: str) -> str:
 
     # Table 5: Stock Data (2 rows)
     t5 = doc.tables[5]
-    stock_row = data.get("stock_data", ["2494 MT", "281 MT", "2775 MT"])
+    stock_row = data.get("stock_data") or ["0 MT", "0 MT", "0 MT"]
     if len(t5.rows) > 1:
         for c_i, val in enumerate(stock_row):
             if c_i < len(t5.rows[1].cells):
