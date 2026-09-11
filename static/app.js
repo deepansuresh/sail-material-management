@@ -1,6 +1,8 @@
 // SAIL Material Management Module - Frontend Script
 let currentProposalData = null;
-let selectedFile = null;
+let selectedFiles = [];
+let analyzedDocuments = [];
+let activeDocIndex = 0;
 
 // Safe DOM text setter: sets innerText only if element exists; supports fallback IDs
 function safeSetText(id, value, fallbackIds = []) {
@@ -15,7 +17,6 @@ function safeSetText(id, value, fallbackIds = []) {
         el.innerText = (value !== undefined && value !== null) ? String(value) : '';
         return el;
     } else {
-        console.warn(`[DOM] Element with id '${id}' not found in current DOM.`);
         return null;
     }
 }
@@ -33,7 +34,6 @@ function safeSetHtml(id, htmlContent, fallbackIds = []) {
         el.innerHTML = (htmlContent !== undefined && htmlContent !== null) ? String(htmlContent) : '';
         return el;
     } else {
-        console.warn(`[DOM] Element with id '${id}' not found in current DOM.`);
         return null;
     }
 }
@@ -55,15 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const selectBtn = document.getElementById('selectBtn');
     const sampleBtn = document.getElementById('sampleBtn');
     const analyzeBtn = document.getElementById('analyzeBtn');
-    const changeFileBtn = document.getElementById('changeFileBtn');
-    const selectedFileBox = document.getElementById('selectedFileBox');
-    const selectedFileName = document.getElementById('selectedFileName');
-    const selectedFileSize = document.getElementById('selectedFileSize');
-    const uploadBtnGroup = document.getElementById('uploadBtnGroup');
-    const dropHint = document.getElementById('dropHint');
-    const processingBox = document.getElementById('processingBox');
-    const uploadCard = document.getElementById('uploadCard');
-    const outputCard = document.getElementById('outputCard');
+    const clearFilesBtn = document.getElementById('clearFilesBtn');
     const newUploadBtn = document.getElementById('newUploadBtn');
     const downloadDocxBtn = document.getElementById('downloadDocxBtn');
     const printBtn = document.getElementById('printBtn');
@@ -88,7 +80,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (e.target.closest('#sampleBtn') || 
                 e.target.closest('#selectBtn') || 
                 e.target.closest('#analyzeBtn') || 
-                e.target.closest('#changeFileBtn') ||
+                e.target.closest('#clearFilesBtn') ||
+                e.target.closest('#addMoreBtn') ||
+                e.target.closest('.btn-remove-file') ||
                 e.target.closest('#selectedFileBox')) {
                 return;
             }
@@ -96,72 +90,48 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 3. File Input change handler
+    // 3. File Input change handler (supports multiple files)
     if (fileInput) {
         fileInput.addEventListener('change', (e) => {
-            if (e.target.files && e.target.files[0]) {
-                onFileChosen(e.target.files[0]);
+            if (e.target.files && e.target.files.length > 0) {
+                onFilesChosen(e.target.files);
             }
         });
-    }
-
-    // Helper: when a file is selected (via picker or drag-and-drop)
-    function onFileChosen(file) {
-        if (!file || !file.name) return;
-
-        if (!file.name.toLowerCase().endsWith('.pdf')) {
-            showUploadError('Please select a valid PDF document.');
-            return;
-        }
-
-        if (file.size > 30 * 1024 * 1024) {
-            showUploadError('File size exceeds maximum limit of 30 MB.');
-            return;
-        }
-
-        clearUploadError();
-        selectedFile = file;
-
-        // Display selected file info & Analyze button
-        if (selectedFileName) selectedFileName.innerText = file.name;
-        if (selectedFileSize) {
-            const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
-            selectedFileSize.innerText = `(${sizeMB} MB)`;
-        }
-
-        if (selectedFileBox) selectedFileBox.style.display = 'flex';
-        if (uploadBtnGroup) uploadBtnGroup.style.display = 'none';
-        if (dropHint) dropHint.style.display = 'none';
     }
 
     // 4. Analyze button trigger
     if (analyzeBtn) {
         analyzeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (selectedFile) {
-                handleFileUpload(selectedFile);
-            } else if (fileInput && fileInput.files && fileInput.files[0]) {
-                handleFileUpload(fileInput.files[0]);
+            if (selectedFiles.length === 1) {
+                handleFileUpload(selectedFiles[0]);
+            } else if (selectedFiles.length > 1) {
+                handleMultipleFileUpload(selectedFiles);
+            } else if (fileInput && fileInput.files && fileInput.files.length > 0) {
+                onFilesChosen(fileInput.files);
+                if (selectedFiles.length === 1) {
+                    handleFileUpload(selectedFiles[0]);
+                } else if (selectedFiles.length > 1) {
+                    handleMultipleFileUpload(selectedFiles);
+                }
             } else {
                 fileInput.click();
             }
         });
     }
 
-    // 5. Change File button trigger
-    if (changeFileBtn && fileInput) {
-        changeFileBtn.addEventListener('click', (e) => {
+    // 5. Clear button trigger
+    if (clearFilesBtn) {
+        clearFilesBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            selectedFile = null;
-            fileInput.value = '';
-            if (selectedFileBox) selectedFileBox.style.display = 'none';
-            if (uploadBtnGroup) uploadBtnGroup.style.display = 'flex';
-            if (dropHint) dropHint.style.display = 'block';
-            fileInput.click();
+            selectedFiles = [];
+            if (fileInput) fileInput.value = '';
+            updateSelectedFilesUI();
+            clearUploadError();
         });
     }
 
-    // 6. Drag & drop handlers
+    // 6. Drag & drop handlers (supports multiple files)
     if (dropZone) {
         ['dragenter', 'dragover'].forEach(eventName => {
             dropZone.addEventListener(eventName, (e) => {
@@ -182,8 +152,8 @@ document.addEventListener('DOMContentLoaded', () => {
         dropZone.addEventListener('drop', (e) => {
             const dt = e.dataTransfer;
             const files = dt ? dt.files : null;
-            if (files && files[0]) {
-                onFileChosen(files[0]);
+            if (files && files.length > 0) {
+                onFilesChosen(files);
             }
         });
     }
@@ -200,15 +170,23 @@ document.addEventListener('DOMContentLoaded', () => {
     if (newUploadBtn) {
         newUploadBtn.addEventListener('click', () => {
             currentProposalData = null;
-            selectedFile = null;
+            selectedFiles = [];
+            analyzedDocuments = [];
+            activeDocIndex = 0;
+
+            const uploadCard = document.getElementById('uploadCard');
+            const outputCard = document.getElementById('outputCard');
+            const processingBox = document.getElementById('processingBox');
+            const docSwitcherBar = document.getElementById('docSwitcherBar');
+
             if (outputCard) outputCard.style.display = 'none';
             if (uploadCard) uploadCard.style.display = 'flex';
             if (dropZone) dropZone.style.display = 'flex';
             if (processingBox) processingBox.style.display = 'none';
-            if (selectedFileBox) selectedFileBox.style.display = 'none';
-            if (uploadBtnGroup) uploadBtnGroup.style.display = 'flex';
-            if (dropHint) dropHint.style.display = 'block';
+            if (docSwitcherBar) docSwitcherBar.style.display = 'none';
             if (fileInput) fileInput.value = '';
+
+            updateSelectedFilesUI();
             clearUploadError();
         });
     }
@@ -241,18 +219,151 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+// Helper: Handles file selection via file picker or drag & drop
+function onFilesChosen(fileList) {
+    if (!fileList || fileList.length === 0) return;
+
+    let rejectedFiles = [];
+    for (let i = 0; i < fileList.length; i++) {
+        const file = fileList[i];
+        if (!file.name.toLowerCase().endsWith('.pdf')) {
+            rejectedFiles.push(`${file.name} (Not a PDF)`);
+            continue;
+        }
+        if (file.size > 30 * 1024 * 1024) {
+            rejectedFiles.push(`${file.name} (Exceeds 30 MB)`);
+            continue;
+        }
+        const exists = selectedFiles.some(f => f.name === file.name && f.size === file.size);
+        if (!exists) {
+            selectedFiles.push(file);
+        }
+    }
+
+    if (rejectedFiles.length > 0) {
+        showUploadError(`Some files could not be added: ${rejectedFiles.join(', ')}`);
+    } else {
+        clearUploadError();
+    }
+
+    updateSelectedFilesUI();
+}
+
+// Helper: Updates the selected files list in the upload box
+function updateSelectedFilesUI() {
+    const selectedFileBox = document.getElementById('selectedFileBox');
+    const selectedFileList = document.getElementById('selectedFileList');
+    const uploadBtnGroup = document.getElementById('uploadBtnGroup');
+    const dropHint = document.getElementById('dropHint');
+    const selectedFilesCount = document.getElementById('selectedFilesCount');
+    const selectedFilesTotalSize = document.getElementById('selectedFilesTotalSize');
+    const analyzeBtnText = document.getElementById('analyzeBtnText');
+
+    if (!selectedFileBox) return;
+
+    if (selectedFiles.length === 0) {
+        selectedFileBox.style.display = 'none';
+        if (uploadBtnGroup) uploadBtnGroup.style.display = 'flex';
+        if (dropHint) dropHint.style.display = 'block';
+        return;
+    }
+
+    if (uploadBtnGroup) uploadBtnGroup.style.display = 'none';
+    if (dropHint) dropHint.style.display = 'none';
+    selectedFileBox.style.display = 'flex';
+
+    let totalBytes = selectedFiles.reduce((acc, f) => acc + f.size, 0);
+    const totalMB = (totalBytes / (1024 * 1024)).toFixed(2);
+
+    if (selectedFilesCount) {
+        selectedFilesCount.innerText = selectedFiles.length === 1 ? '1 file selected' : `${selectedFiles.length} files selected`;
+    }
+    if (selectedFilesTotalSize) {
+        selectedFilesTotalSize.innerText = `(${totalMB} MB total)`;
+    }
+    if (analyzeBtnText) {
+        analyzeBtnText.innerText = selectedFiles.length === 1 ? 'Analyze Proposal' : `Analyze All (${selectedFiles.length} Files)`;
+    }
+
+    if (selectedFileList) {
+        selectedFileList.innerHTML = '';
+        selectedFiles.forEach((f, idx) => {
+            const fSizeMB = (f.size / (1024 * 1024)).toFixed(2);
+            const item = document.createElement('div');
+            item.className = 'selected-file-item';
+            item.innerHTML = `
+                <div class="file-item-left">
+                    <div class="file-icon-badge">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                        </svg>
+                    </div>
+                    <div class="file-details">
+                        <div class="file-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</div>
+                        <div class="file-size">${fSizeMB} MB</div>
+                    </div>
+                </div>
+                <button type="button" class="btn-remove-file" data-index="${idx}" title="Remove this file">&times;</button>
+            `;
+
+            const removeBtn = item.querySelector('.btn-remove-file');
+            if (removeBtn) {
+                removeBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    removeSelectedFile(idx);
+                });
+            }
+            selectedFileList.appendChild(item);
+        });
+    }
+}
+
+function removeSelectedFile(index) {
+    if (index >= 0 && index < selectedFiles.length) {
+        selectedFiles.splice(index, 1);
+        const fileInput = document.getElementById('fileInput');
+        if (fileInput) fileInput.value = '';
+        updateSelectedFilesUI();
+    }
+}
+
+function uploadAndAnalyzeSingleFile(file) {
+    return new Promise((resolve, reject) => {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/analyze', true);
+        xhr.timeout = 180000;
+
+        xhr.onload = () => {
+            if (xhr.status === 200) {
+                try {
+                    const data = JSON.parse(xhr.responseText);
+                    resolve(data);
+                } catch (e) {
+                    reject(new Error('Invalid JSON response: ' + e.message));
+                }
+            } else {
+                let msg = 'Server returned status ' + xhr.status;
+                try {
+                    const err = JSON.parse(xhr.responseText);
+                    if (err.detail) msg = err.detail;
+                } catch (_) {}
+                reject(new Error(msg));
+            }
+        };
+
+        xhr.onerror = () => reject(new Error('Network error during upload.'));
+        xhr.ontimeout = () => reject(new Error('Request timed out after 3 minutes.'));
+
+        xhr.send(formData);
+    });
+}
+
 function handleFileUpload(file) {
     if (!file || !file.name) return;
-
-    if (!file.name.toLowerCase().endsWith('.pdf')) {
-        showUploadError('Please select a valid PDF document.');
-        return;
-    }
-
-    if (file.size > 30 * 1024 * 1024) {
-        showUploadError('File size exceeds maximum limit of 30 MB.');
-        return;
-    }
 
     currentProposalData = null;
     clearUploadError();
@@ -286,6 +397,10 @@ function handleFileUpload(file) {
             try {
                 const data = JSON.parse(xhr.responseText);
                 if (progressBar) progressBar.style.width = '100%';
+                analyzedDocuments = [{ filename: file.name, data: data }];
+                activeDocIndex = 0;
+                const docSwitcherBar = document.getElementById('docSwitcherBar');
+                if (docSwitcherBar) docSwitcherBar.style.display = 'none';
                 renderProposal(data);
             } catch (err) {
                 console.error('[Client Error] Error rendering proposal:', err);
@@ -316,6 +431,99 @@ function handleFileUpload(file) {
     xhr.send(formData);
 }
 
+async function handleMultipleFileUpload(files) {
+    if (!files || files.length === 0) return;
+
+    currentProposalData = null;
+    analyzedDocuments = [];
+    clearUploadError();
+    showProcessing(`Preparing to process ${files.length} documents...`);
+
+    const progressBar = document.getElementById('progressBar');
+    let failedFiles = [];
+
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const fileNum = i + 1;
+        safeSetText('processStatus', `Analyzing file ${fileNum} of ${files.length}: ${file.name}...`);
+        updateSidebarActivity(`${file.name} (${fileNum}/${files.length})`);
+        
+        const pct = Math.round((i / files.length) * 90) + 5;
+        if (progressBar) progressBar.style.width = `${pct}%`;
+
+        try {
+            const data = await uploadAndAnalyzeSingleFile(file);
+            analyzedDocuments.push({ filename: file.name, data: data });
+        } catch (err) {
+            console.error(`Error processing ${file.name}:`, err);
+            failedFiles.push({ filename: file.name, error: err.message });
+        }
+    }
+
+    if (progressBar) progressBar.style.width = '100%';
+
+    if (analyzedDocuments.length === 0) {
+        showUploadError(`All files failed to process. Errors: ${failedFiles.map(f => f.filename + ': ' + f.error).join('; ')}`);
+        return;
+    }
+
+    renderMultipleProposals(analyzedDocuments, failedFiles);
+}
+
+function renderMultipleProposals(docs, failedFiles = []) {
+    const docSwitcherBar = document.getElementById('docSwitcherBar');
+    const docSwitcherTabs = document.getElementById('docSwitcherTabs');
+
+    if (docs.length > 1) {
+        if (docSwitcherBar) docSwitcherBar.style.display = 'flex';
+        if (docSwitcherTabs) {
+            docSwitcherTabs.innerHTML = '';
+            docs.forEach((doc, idx) => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'doc-tab' + (idx === 0 ? ' active' : '');
+                btn.innerHTML = `
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    </svg>
+                    <span>${escapeHtml(doc.filename)}</span>
+                `;
+                btn.addEventListener('click', () => switchActiveDocument(idx));
+                docSwitcherTabs.appendChild(btn);
+            });
+        }
+    } else {
+        if (docSwitcherBar) docSwitcherBar.style.display = 'none';
+    }
+
+    activeDocIndex = 0;
+    renderProposal(docs[0].data);
+    updateSidebarActivity(docs[0].filename);
+
+    if (failedFiles.length > 0) {
+        const warnMsg = `Note: ${failedFiles.length} file(s) could not be parsed (${failedFiles.map(f => f.filename).join(', ')}). Displaying ${docs.length} successful proposal(s).`;
+        showUploadError(warnMsg);
+    }
+}
+
+function switchActiveDocument(index) {
+    if (index < 0 || index >= analyzedDocuments.length) return;
+    activeDocIndex = index;
+
+    const tabs = document.querySelectorAll('.doc-tab');
+    tabs.forEach((t, i) => {
+        if (i === index) {
+            t.classList.add('active');
+        } else {
+            t.classList.remove('active');
+        }
+    });
+
+    const targetDoc = analyzedDocuments[index];
+    renderProposal(targetDoc.data);
+    updateSidebarActivity(targetDoc.filename);
+}
+
 function loadSampleRequisition() {
     currentProposalData = null;
     clearUploadError();
@@ -334,6 +542,10 @@ function loadSampleRequisition() {
     })
     .then(data => {
         if (progressBar) progressBar.style.width = '100%';
+        analyzedDocuments = [{ filename: 'sample_indent.pdf', data: data }];
+        activeDocIndex = 0;
+        const docSwitcherBar = document.getElementById('docSwitcherBar');
+        if (docSwitcherBar) docSwitcherBar.style.display = 'none';
         renderProposal(data);
     })
     .catch(err => {
