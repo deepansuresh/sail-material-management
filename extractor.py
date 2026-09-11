@@ -151,6 +151,146 @@ def extract_text_from_pdf(pdf_path: str, max_pages: int = 30, total_timeout_sec:
     }
 
 
+def extract_consumption_table_from_text(text: str, doc_date: str) -> list:
+    """
+    Dynamically extracts the 3-year consumption table and Average row from the uploaded PDF text.
+    If no historical consumption table is present in the document, calculates dynamic fiscal years
+    based on the document date and returns non-empty safe 0 values.
+    NEVER uses hardcoded sample constants.
+    """
+    m_sec = re.search(
+        r'(?:actual\s+consumption|financial\s+year|consumption\s+of|last\s+three\s+years)[^\n]*\n(.*?)(?=stock\s+at\s+site|the\s+stock|notings\s*:|Annexure|\Z)',
+        text,
+        re.IGNORECASE | re.DOTALL
+    )
+    sec_txt = m_sec.group(1) if m_sec else text
+
+    tokens = [t.strip() for t in re.split(r'[\s,]+', sec_txt) if t.strip()]
+
+    year_indices = []
+    for i, t in enumerate(tokens):
+        if re.match(r'^(?:20\d\d[-–\/]\d{2,4}|\d{4}-\d{2})$', t):
+            year_indices.append((i, t))
+
+    parsed_rows = []
+    if year_indices:
+        for idx_pos, (t_idx, yr) in enumerate(year_indices):
+            next_limit = year_indices[idx_pos + 1][0] if idx_pos + 1 < len(year_indices) else len(tokens)
+            row_vals = []
+            for j in range(t_idx + 1, min(next_limit, t_idx + 12)):
+                tok = tokens[j]
+                if tok.lower() == 'average' or re.match(r'^(?:20\d\d[-–\/]\d{2,4})$', tok) or re.match(r'^\d+\.', tok):
+                    break
+                clean_num = re.sub(r'[^\d.]', '', tok)
+                if clean_num:
+                    row_vals.append(clean_num)
+            while len(row_vals) < 4:
+                row_vals.append("0")
+            parsed_rows.append([yr] + row_vals[:4])
+
+    if parsed_rows:
+        avg_idx = -1
+        for i, t in enumerate(tokens):
+            if t.lower() == 'average':
+                avg_idx = i
+                break
+
+        avg_vals = []
+        if avg_idx != -1:
+            for j in range(avg_idx + 1, min(len(tokens), avg_idx + 8)):
+                tok = tokens[j]
+                if re.match(r'^\d+\.', tok) or 'stock' in tok.lower():
+                    break
+                clean_num = re.sub(r'[^\d.]', '', tok)
+                if clean_num:
+                    avg_vals.append(clean_num)
+
+        try:
+            cons_vals = [float(r[1]) for r in parsed_rows if float(r[1]) > 0]
+            avg_c = str(round(sum(cons_vals) / len(cons_vals))) if cons_vals else (avg_vals[0] if len(avg_vals) > 0 else "0")
+        except:
+            avg_c = avg_vals[0] if len(avg_vals) > 0 else "0"
+
+        try:
+            prod_vals = [float(r[2]) for r in parsed_rows if float(r[2]) > 0]
+            avg_p = str(round(sum(prod_vals) / len(prod_vals))) if prod_vals else (avg_vals[1] if len(avg_vals) > 1 else "0")
+        except:
+            avg_p = avg_vals[1] if len(avg_vals) > 1 else "0"
+
+        try:
+            conv_vals = [float(r[3]) for r in parsed_rows if float(r[3]) > 0]
+            avg_conv = str(round(sum(conv_vals) / len(conv_vals))) if conv_vals else (avg_vals[2] if len(avg_vals) > 2 else "0")
+        except:
+            avg_conv = avg_vals[2] if len(avg_vals) > 2 else "0"
+
+        try:
+            if len(avg_vals) > 0:
+                avg_sp = avg_vals[-1]
+            else:
+                sp_vals = [float(r[4]) for r in parsed_rows if float(r[4]) > 0]
+                avg_sp = str(round(sum(sp_vals) / len(sp_vals))) if sp_vals else "0"
+        except:
+            avg_sp = avg_vals[-1] if avg_vals else "0"
+
+        avg_row = ["Average", avg_c, avg_p, avg_conv, avg_sp]
+        return parsed_rows + [avg_row]
+
+    # If no consumption table was in the document, dynamically derive fiscal years from doc_date
+    m_yr = re.search(r'20(\d\d)', doc_date)
+    base_yr = int(m_yr.group(1)) if m_yr else 25
+    return [
+        [f"20{base_yr-3}-{base_yr-2}", "0", "0", "0", "0"],
+        [f"20{base_yr-2}-{base_yr-1}", "0", "0", "0", "0"],
+        [f"20{base_yr-1}-{base_yr}", "0", "0", "0", "0"],
+        ["Average", "0", "0", "0", "0"]
+    ]
+
+
+def extract_stock_data_from_text(text: str, quantity_str: str = "MT") -> list:
+    """
+    Dynamically extracts Stock at site, Pending supply, and Stock & pending supplies from uploaded PDF.
+    If not explicitly given, calculates total dynamically.
+    NEVER uses hardcoded sample constants.
+    """
+    m_unit = re.search(r'\b(MT|Nos|Sets|Numbers|Units|KG)\b', quantity_str, re.IGNORECASE)
+    unit = m_unit.group(1).upper() if m_unit else "MT"
+
+    m_sec = re.search(
+        r'(?:stock\s+at\s+site|the\s+stock[^\n]*\n)(.*?)(?=\n\s*\d+\.|\n\s*Initiator|4\.\s*SMS|\Z)',
+        text,
+        re.IGNORECASE | re.DOTALL
+    )
+    sec_txt = m_sec.group(1) if m_sec else text
+
+    tokens_with_units = re.findall(r'(\d+(?:,\d+)*(?:\.\d+)?)\s*([A-Za-z]+)?', sec_txt)
+    valid_nums = []
+    for num, u in tokens_with_units:
+        num_clean = num.replace(',', '')
+        try:
+            val = float(num_clean)
+            if val >= 0:
+                valid_nums.append((num, u.strip() if u else unit))
+        except:
+            pass
+
+    if len(valid_nums) >= 3:
+        s1 = f"{valid_nums[0][0]} {valid_nums[0][1]}" if valid_nums[0][1] else f"{valid_nums[0][0]} {unit}"
+        s2 = f"{valid_nums[1][0]} {valid_nums[1][1]}" if valid_nums[1][1] else f"{valid_nums[1][0]} {unit}"
+        s3 = f"{valid_nums[2][0]} {valid_nums[2][1]}" if valid_nums[2][1] else f"{valid_nums[2][0]} {unit}"
+        return [s1, s2, s3]
+    elif len(valid_nums) == 2:
+        s1 = f"{valid_nums[0][0]} {unit}"
+        s2 = f"{valid_nums[1][0]} {unit}"
+        try:
+            total = float(valid_nums[0][0].replace(',', '')) + float(valid_nums[1][0].replace(',', ''))
+            s3 = f"{int(total) if total.is_integer() else total} {unit}"
+        except:
+            s3 = f"{valid_nums[0][0]} {unit}"
+        return [s1, s2, s3]
+
+    return [f"0 {unit}", f"0 {unit}", f"0 {unit}"]
+
+
 def parse_purchase_requisition(text, filename: str = "") -> dict:
     if isinstance(text, dict):
         text = text.get("combined_text", "")
@@ -475,17 +615,8 @@ def parse_purchase_requisition(text, filename: str = "") -> dict:
 
     narrative_clauses = [c1, c2, c3, c4, c5, c6, c7]
 
-    consumption_data = [
-        ["2022-23", "24477", "140050", "23", "1064"],
-        ["2023-24", "25249", "152493", "24", "1052"],
-        ["2024-25", "32248", "145891", "24", "1344"],
-        ["Average", "27325", "146145", "24", "1153"],
-    ]
-
-    stock_data = ["2494 MT", "281 MT", "2775 MT"]
-    m_stk = re.search(r'(\d+)\s*MT[^\d\n]+(\d+)\s*MT[^\d\n]+(\d+)\s*MT', text)
-    if m_stk:
-        stock_data = [f"{m_stk.group(1)} MT", f"{m_stk.group(2)} MT", f"{m_stk.group(3)} MT"]
+    consumption_data = extract_consumption_table_from_text(text, doc_date)
+    stock_data = extract_stock_data_from_text(text, quantity)
 
     notings = [
         {"sno": "1", "action_by": f"{initiator_name} , PNo:\n{initiator_pno}\n{initiator_desig}", "action": f"Initiated\nOn {doc_date}", "comments": "Submitted for approval."},
